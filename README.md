@@ -27,6 +27,10 @@ The columns featured in the dataset (names in the first row):
   * *status*  "win"/"loose" tags calculated using bet and answer value combined with odds [string]
   * *userID*  assigned based on addrID_player using the methods and dataset of (**2**) [integer]
 
+## Replicating research
+
+Use the R workbook *hot_hand_cold_head.Rmd* to reproduce research results presented in (**1**).
+
 With questions about the dataset or the process, contact Máté Sándor (sampaat at gmail dot com).
 
   1. Sándor, M.C., Bakó, B (2021). Approaching the Hot Hand with a Cool Head (Working paper)
