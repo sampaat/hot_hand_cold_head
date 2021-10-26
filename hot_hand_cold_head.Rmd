@@ -3,7 +3,7 @@ title: "Approaching the Hot Hand with a Cool Head"
 output: html_notebook
 ---
 
-#The Dataset
+# The Dataset
 
 The following piece of script needs the precalculated datasets placed in the same directory.The dataset is downloadable from the file sharing service detailed in the README.md file or recreated following the steps there.
 
@@ -31,6 +31,8 @@ groundhog.day="2021-03-01"
 pkgs=c('tidyverse','ggpubr')
 groundhog.library(pkgs, groundhog.day)
 
+WORKDIR <- "/Users/sandorm/bce-bitluck" #set this for your own working directory
+
 normalizeToBitcoin <- function(user_bets){
   user_bets %>% 
     mutate(bet_value = bet_value * 1e-8,
@@ -41,7 +43,7 @@ aggregateUser <- function(user_bets){
   user_bets %>% 
     mutate(last_outcome = answer_value - bet_value,
            win_answer_value = ifelse(status == "win",answer_value - bet_value,0),
-           loose_answer_value = ifelse(status == "loose",answer_value - bet_value,0)) %>%
+           loose_answer_value = ifelse(status == "loss",answer_value - bet_value,0)) %>%
     mutate(balance = cumsum(answer_value - bet_value),
            winsum = cumsum(win_answer_value),
            loosesum = cumsum(loose_answer_value))
@@ -51,7 +53,7 @@ aggregateUser <- function(user_bets){
 addlag <- function(user_bets){
   user_bets %>% 
     mutate(bet_pred = lead(bet_value, n = 1),
-           game_pred = lead(PriceMultiplier, n = 1),
+           game_pred = lead(odds, n = 1),
            time_nextbet = lead(time_bet, n = 1),
            status_pred = lead(status, n = 1))
 }
@@ -84,27 +86,26 @@ pwin_to_prob <- c(
   "lessthan","4","1dice2pxmRZrtqBVzixvWnxsMa7wN2GCK","0.0061","15990.789","1.900","98.100","0.0010","0.2001",
   "lessthan","2","1dice1Qf4Br5EYjj9rnHWqgMVYnQWehYG","0.0031","31981.573","1.900","98.100","0.0010","0.1000",
   "lessthan","1","1dice1e6pdhLzzWQq7yMidf6j8eAg7pkY","0.0015","64000.000","1.844","98.156","0.0010","0.0500") %>%
-  matrix(ncol = 9, byrow = T, dimnames = list(NULL,c("Name","Name2","Address","pwin","PriceMultiplier","House cut (%)","Expected return (%)","Min bet (BTC)","Max bet (BTC)"))) %>%
+  matrix(ncol = 9, byrow = T, dimnames = list(NULL,c("Name","Name2","Address","pwin","odds","House cut (%)","Expected return (%)","Min bet (BTC)","Max bet (BTC)"))) %>%
   as_tibble() %>%
-  select(PriceMultiplier,pwin) %>%
+  select(odds,pwin) %>%
   type_convert()
 
-extractAndPrepareUser <- function(userID_in, user_bets_matched){
-  ret <- user_bets_matched %>% 
-    filter(userID == userID_in) %>% 
+extractAndPrepareUser <- function(x,...){
+  ret <- x %>%
     arrange(time_bet) %>% 
     normalizeToBitcoin() %>% 
     addlag() %>% 
     aggregateUser() %>% 
-    left_join(pwin_to_prob, by = "PriceMultiplier") %>%
+    left_join(pwin_to_prob, by = "odds") %>%
     mutate(bet_changed = bet_pred != bet_value,
-           game_changed = game_pred != PriceMultiplier,
-           exp_changed = bet_pred*game_pred != bet_value*PriceMultiplier,
+           game_changed = game_pred != odds,
+           exp_changed = bet_pred*game_pred != bet_value*odds,
            bet_changed_factor = sign(bet_value-bet_pred) %>% factor(levels = c(0,1,-1)),
-           game_changed_factor = sign(game_pred-PriceMultiplier) %>% factor(levels = c(0,1,-1)),
-           exp_changed_factor = sign(bet_pred*game_pred - bet_value*PriceMultiplier) %>% factor(levels = c(0,1,-1)),
+           game_changed_factor = sign(game_pred-odds) %>% factor(levels = c(0,1,-1)),
+           exp_changed_factor = sign(bet_pred*game_pred - bet_value*odds) %>% factor(levels = c(0,1,-1)),
            expectation = bet_pred*game_pred,
-           exp_change_ratio = log(bet_pred*game_pred/(bet_value*PriceMultiplier)),
+           exp_change_ratio = log(bet_pred*game_pred/(bet_value*odds)),
            bet_change_ratio = log(bet_pred/bet_value),
            win_cumm_log = log10(1+abs(winsum)),
            loose_cumm_log = log10(1+abs(loosesum)),
@@ -116,7 +117,7 @@ extractAndPrepareUser <- function(userID_in, user_bets_matched){
            stay_length = 1,
            game_streak = 0,
            streak_total_length = 0) %>%
-    left_join(pwin_to_prob %>% rename(pwin_pred = pwin), by = c("game_pred" = "PriceMultiplier")) %>%
+    left_join(pwin_to_prob %>% rename(pwin_pred = pwin), by = c("game_pred" = "odds")) %>%
     mutate(game_diff = pwin_pred - pwin,
            game_diff_ratio = (pwin_pred - pwin)/pwin) %>%
     drop_na()
@@ -167,47 +168,34 @@ extractAndPrepareUser <- function(userID_in, user_bets_matched){
       }
     }
   }
-  
-  return(ret %>% 
-           arrange(time_bet) %>% 
-           mutate(stayed_after = lead(stayed, n = 1)))
+  return(ret %>% arrange(time_bet))
 }
 
-prepare_user_table <- function(user_bets_matched, min_games = 2){
+prepare_user_table <- function(user_bets_matched, min_games = 2, ...){
   user_bets_matched %>% 
+    drop_na() %>%
     group_by(userID) %>% 
-    summarize(ngamez = n(),.groups = "drop") %>% 
-    filter(ngamez > 2) %>%
-    select(userID) %>%
-    mutate(user_data = map(userID, function(x)extractAndPrepareUser(x,user_bets_matched))) %>%
-    mutate(balance_sign_unique = map(user_data, function(x){(x$balance_sign == "1") %>% {all(.)|all(!.)}}) %>% unlist) %>%
-    mutate(exp_changed_factor_0in = map(user_data, function(x){(x$exp_changed_factor == "0") %>% {!any(.)}}) %>% unlist) %>%
-    mutate(exp_changed_factor_2obs = map(user_data, function(x){(sum(x$exp_changed_factor == "0") > 7)&(sum(x$exp_changed_factor == "-1") > 7)&(sum(x$exp_changed_factor == "1") > 7)}) %>% unlist) %>%
-    mutate(status_unique = map(user_data, function(x){(x$status == "win") %>% {all(.)|all(!.)}}) %>% unlist) %>%
-    mutate(bet_change_perc = map(user_data, function(x){sum(x$bet_changed)/nrow(x)}) %>% unlist,
-           game_change_perc = map(user_data, function(x){sum(x$game_changed)/nrow(x)}) %>% unlist,
-           exp_change_perc = map(user_data, function(x){sum(x$exp_changed)/nrow(x)}) %>% unlist) %>%
-    mutate(user_data_scaled = map(user_data, function(x){x %>% #create scaled data (without centering) for each user
-        select(last_outcome,balance,winsum,loosesum,balance_log,win_cumm_log) %>%
-        scale(center = F) %>%
-        as_tibble() %>%
-        bind_cols(x %>% select(userID, stayed_after,game_changed,game_diff,bet_changed, bet_change_ratio, exp_changed, exp_change_ratio, pwin, balance_sign, status,streak, streak_total_length, PriceMultiplier, stay_length, game_pred, status_pred), .name_repair = "unique")}))
+    mutate(ngamez = n()) %>% 
+    filter(ngamez > min_games) %>%
+    group_modify(extractAndPrepareUser) %>%
+    ungroup()
 }
 
 #loading and processing data
-
+setwd(WORKDIR)
 user_bets_matched_list <- tibble(
   label = c("A","B","C","D","E"),
   start_date = c("2012-05-02", "2012-09-17", "2012-12-17", "2013-05-04", "2013-09-11"),
   end_date = c("2012-05-22", "2012-10-07", "2013-01-06", "2013-05-24", "2013-10-01")) %>%
-  mutate(user_bets_matched = map2(start_date, end_date, function(x,y)read.csv(file = paste0("primedice_bets_matched_",x,"_to_",y,"_rough.csv")))) %>%
+  mutate(user_bets_matched = map2(start_date, end_date, function(x,y)read.csv(file = paste0("calcdata/satoshidice_bets_matched__",x,"_to_",y,"_clean.csv")))) %>%
   mutate(users_table = map(user_bets_matched, prepare_user_table))
 
-pooled_table_scaled <- user_bets_matched_list %>% mutate(user_data_scaled = map2(users_table, label, function(x,y){x$user_data_scaled %>% bind_rows() %>% drop_na %>% mutate(label = y)})) %>% pull(user_data_scaled) %>% bind_rows() %>% drop_na
-pooled_table_unscaled <- user_bets_matched_list %>% mutate(pooled_table_unscaled = map2(users_table, label, function(x,y){x$user_data %>% bind_rows() %>% drop_na %>% mutate(label = y)})) %>% pull(pooled_table_unscaled) %>% bind_rows() %>% drop_na
+pooled_table_unscaled <- user_bets_matched_list  %>% 
+  pull(users_table, name = label) %>%
+  bind_rows(.id = "label")
 ```
 
-#Distribution of win probability
+# Distribution of win probability
 
 The two tables calculated below are featured in Table 1 and 2. Straightforward summary statistics.
 
@@ -217,9 +205,10 @@ pooled_table_unscaled %>%
   summarize(
     start_date = as.Date(as.POSIXct(min(time_bet), origin="1970-01-01")),
     n_games = n(),
-    n_users = n_distinct(userID), .groups = "drop",
-    tot_bet = sum(bet_value),med_bet = median(bet_value))n_games = n(),
-    
+    n_users = n_distinct(userID),
+    tot_bet = sum(bet_value),
+    med_bet = median(bet_value),
+    .groups = "drop")
 
 #bitcoin prices can be added from the bitcoin_pricehistory_lowvar.R script
 
@@ -228,20 +217,21 @@ pooled_table_unscaled %>%
   group_by(label, pwin) %>%
   summarize(n = n(), .groups = "drop") %>%
   pivot_wider(names_from = label, values_from = n) %>%
-  mutate(A = A/sum(A, na.rm = TRUE)) %>% 
-  mutate(B = B/sum(B, na.rm = TRUE)) %>%
-  mutate(C = C/sum(C, na.rm = TRUE)) %>%
-  mutate(D = D/sum(D, na.rm = TRUE)) %>%
-abel) %>%
-abel) %>%
+  mutate(A = A/sum(A, na.rm = TRUE)*100 %>% round(digits = 1)) %>% 
+  mutate(B = B/sum(B, na.rm = TRUE)*100 %>% round(digits = 1)) %>%
+  mutate(C = C/sum(C, na.rm = TRUE)*100 %>% round(digits = 1)) %>%
+  mutate(D = D/sum(D, na.rm = TRUE)*100 %>% round(digits = 1)) %>%
+  mutate(E = E/sum(E, na.rm = TRUE)*100 %>% round(digits = 1)) %>%
+  arrange(pwin)
 ```
 
-#Observed mean winning probability
+# Observed mean winning probability
 
 On streak of n means the game followed n-1 games without changing the outcome at any. Off streak of n means the game has followed n-1 games of any but the same outcomes as the current one. Here we calculate the ratio of wins to losses following game histories on/off streak of n. The plot produces figure 2.
+
 ```{r}
 winstreak_obs_winprob <- lapply(seq(1,10), function(i){
-  pooled_table_unscaled %>%
+  pooled_table_unscaled %>% 
   mutate(winstreak = ((status == "win")&(streak == i))) %>%
   group_by(winstreak, label) %>%
   summarize(nof = n(), obs_pwin = sum(status_pred == "win")/n(), .groups = "drop") %>%
@@ -285,7 +275,7 @@ in_win_plot <- ggplot(winstreak_obs_winprob, aes(x=streak, y=obs_pwin, group=int
 
 lossstreak_obs_winprob <- lapply(seq(1,10), function(i){
   pooled_table_unscaled %>% 
-  mutate(lossstreak = ((status == "loose")&(streak == i))) %>%
+  mutate(lossstreak = ((status == "loss")&(streak == i))) %>%
   group_by(lossstreak, label) %>%
   summarize(n = n(), obs_pwin = sum(status_pred == "win")/n(), .groups = "drop") %>%
   mutate(streak = i)
@@ -322,11 +312,14 @@ in_loss_plot <- ggplot(lossstreak_obs_winprob, aes(x=streak, y=obs_pwin, group=i
       shape = "Streak type:") + 
   xlim(c(0.9,6.1))
 
-ggpubr::ggarrange(in_win_plot, in_loss_plot,
-          ncol = 2, nrow = 1,  common.legend = TRUE, legend="bottom")
+ggpubr::ggarrange(in_win_plot, in_loss_plot, 
+                  ncol = 2, nrow = 1,  common.legend = TRUE, legend="bottom")
+
+setwd(WORKDIR)
+ggsave("plots/figure_2_2.0.pdf", device = "pdf", width = 36.52,  height = 12.63,  units = "cm")
 ```
 
-#Mean pwin after streak
+# Mean pwin after streak
 
 Similar to what we have observed before, but here we are measuring the median of the pwin, which is the implied probability of win (reciprocate of odds/multiplier) after an n long win/loss streak. The plot produces figure 3.
 
@@ -369,16 +362,19 @@ ggplot(streak_odds_pwin, aes(x=streak, y=mean_pwin/100, group=interaction(status
           shape = guide_legend(order = 2),
           linetype = guide_legend(order = 1)) +
   xlim(c(0,6.1))
+
+setwd(WORKDIR)
+ggsave("plots/figure_3_2.0.pdf", device = "pdf", width = 18.26,  height = 12.63,  units = "cm")
 ```
 
-## Probability of changing pwin
+# Probability of changing pwin
 
-Here we calculate the ratio of game changes following win/loss streaks of n. Produces figure 4.
+Here we calculate the ratio of when the game changes (vs when it is not) following win/loss streaks of n. Produces figure 4.
 
 ```{r}
 pwin_change_prob <- pooled_table_unscaled %>%
   filter(streak <7) %>%
-  mutate(status = ifelse(status == "loose", "Loss", "Win")) %>%
+  mutate(status = ifelse(status == "loss", "Loss", "Win")) %>%
   group_by(streak, status) %>%
   summarize(change_prob = sum(game_changed)/n(), .groups = "drop")
 
@@ -400,27 +396,33 @@ ggplot(pwin_change_prob, aes(fill=status, y=change_prob, x=streak)) +
     legend.key.width = unit(.8,"cm"),
     legend.key.height = unit(1,"cm")
   ) + 
-  scale_y_continuous(labels=scales::percent_format(accuracy = 5L), limits = c(.0,.42)) +
+  scale_y_continuous(labels=scales::percent_format(accuracy = 5L), limits = c(.0,.5)) +
   labs(
     x = "Streak length",
     y = "Probability of change in game",
     fill = "Streak type:")
 
+
+setwd(WORKDIR)
+ggsave("plots/figure_4_2.0.pdf", device = "pdf", width = 18.26,  height = 12.63,  units = "cm")
 ```
+# Size of pwin change
 
-## Size of pwin change if it happens
-
-Here we calculate the relative size of change in pwin if the change did occur. Here -50% means halving pwin compared to the current game (e.g. from 50% to 25%) and +100% means doubling it (e.g. from 1% to 2%). Medians are used due to the highly skewed and fat-tailed nature of the distribution. Produces figure 5.
+Here we calculate the relative size of change in pwin. Here -1 means halving pwin compared to the current game (e.g. from 50% to 25%) and +1 means doubling it (e.g. from 1% to 2%). Logarithmic scale is used to normalise the distribution of the ratios, a well known technique from finance. This section produces figure 5.
 
 ```{r}
 pwin_change_relative <- pooled_table_unscaled %>% 
   filter((streak < 7) & game_changed) %>%
   mutate(streak_signed = ifelse(status == "win",streak,-streak)) %>%
   group_by(streak_signed, label) %>%
-  summarize(game_diff_mean = median(game_diff_ratio), .groups = "drop")
+  summarize(
+    game_diff_mean = mean(game_diff_ratio+1), 
+    game_diff_logmean = mean(log(game_diff_ratio+1, base = 2)), 
+    game_diff_median = median(game_diff_ratio+1), 
+            .groups = "drop")
 
 pwin_change_relative %>%
-  {ggplot(data = ., aes(x = factor(streak_signed), y = game_diff_mean, group = label)) +
+  {ggplot(data = ., aes(x = factor(streak_signed), y = game_diff_logmean, group = label)) +
   geom_point(aes(color = label, shape = label), size = 4) +
   geom_hline(yintercept = 0) + 
   geom_vline(xintercept = which(levels(factor(.$streak_signed)) %in% '0')) +
@@ -440,22 +442,25 @@ pwin_change_relative %>%
     )  +
     scale_color_manual(values = c("#F9CC2C","#096773","#E7033C","#13C062","#111460")) +
     scale_shape_manual(values = c(15,16,24,18,25)) +
-    scale_y_continuous(labels=scales::percent_format(), limits = c(-.51,.51)) +
+    #scale_y_continuous(trans = scales::log2_trans()) +
     labs(
       x = "losing                   Streak                 winning",
-      y = "Median relative change in winning probability",
+      #y = "Mean of relative change in winning probability",
+      y = latex2exp::TeX("Change in winning probabilities"),
       color = "Sample:",
       shape = "Sample:")}
+
+setwd(WORKDIR)
+ggsave("plots/figure_5_2.6.pdf", device = "pdf", width = 18.26,  height = 12.63,  units = "cm")
 ```
 
-## Simulations
+# Simulations
 
 Here we are basically generating random sequences of outcomes for players who choose a random game from their initial set and stuck to it for n_games. Then we calculate the same observed winning probabilites Xu and Harwey worked with and plot it like we did for the data in the beginning. It produces figure 1.
 
 ```{r}
 n_players <- 10000
 n_games <- 100
-
 #non-changing bots with uniform distribution of initial risk
 sim_games_uniform <- lapply(runif(n_players), function(x)({
   rolls <- tibble(game = x, status = ifelse(runif(n_games) < x,"win","loss"), streak = 0)
@@ -475,7 +480,6 @@ sim_games_uniform <- lapply(runif(n_players), function(x)({
   bind_rows() %>% 
   mutate(status_pred = lead(status, n = 1)) %>% 
   drop_na()
-
 winstreak_obs_winprob_uniform <- lapply(seq(1,10), function(i){
   sim_games_uniform %>% 
   mutate(winstreak = ((status == "win")&(streak == i))) %>%
@@ -485,7 +489,6 @@ winstreak_obs_winprob_uniform <- lapply(seq(1,10), function(i){
 }) %>%
   bind_rows() %>%
   mutate(winstreak = ifelse(winstreak, "In win streak", "Off win streak"))
-
 losingstreak_obs_winprob_uniform <- lapply(seq(1,10), function(i){
   sim_games_uniform %>% 
   mutate(lossstreak = ((status == "loss")&(streak == i))) %>%
@@ -495,9 +498,7 @@ losingstreak_obs_winprob_uniform <- lapply(seq(1,10), function(i){
 }) %>%
   bind_rows() %>%
   mutate(lossstreak = ifelse(lossstreak, "In loss streak", "Off loss streak"))
-
 #non-changing bots with initial risk distribution matching the distribution of the dataset
-
 players_satoshi <- pooled_table_unscaled %>% 
   pull(pwin) %>% 
   table() %>% 
@@ -506,7 +507,6 @@ players_satoshi <- pooled_table_unscaled %>%
   {mapply(function(x, i) rep(i, x), ., names(.))} %>%
   unlist() %>%
   as.numeric()/100
-
 sim_games_satoshi <- lapply(players_satoshi, function(x)({
   rolls <- tibble(game = x, status = ifelse(runif(n_games) < x,"win","loss"), streak = 0)
   for(i in seq(1, n_games)){
@@ -525,7 +525,6 @@ sim_games_satoshi <- lapply(players_satoshi, function(x)({
   bind_rows() %>% 
   mutate(status_pred = lead(status, n = 1)) %>% 
   drop_na()
-
 winstreak_obs_winprob_satoshi <- lapply(seq(1,10), function(i){
   sim_games_satoshi %>% 
   mutate(winstreak = ((status == "win")&(streak == i))) %>%
@@ -535,7 +534,6 @@ winstreak_obs_winprob_satoshi <- lapply(seq(1,10), function(i){
 }) %>%
   bind_rows() %>%
   mutate(winstreak = ifelse(winstreak, "In win streak", "Off win streak"))
-
 losingstreak_obs_winprob_satoshi <- lapply(seq(1,10), function(i){
   sim_games_satoshi %>% 
   mutate(lossstreak = ((status == "loss")&(streak == i))) %>%
@@ -545,11 +543,8 @@ losingstreak_obs_winprob_satoshi <- lapply(seq(1,10), function(i){
 }) %>%
   bind_rows() %>%
   mutate(lossstreak = ifelse(lossstreak, "In loss streak", "Off loss streak"))
-
 #non-changing bots with initial risk distribution consisting of two levels of 25% and 75%
-
 players_twogames <- c(rep(.75,n_players/2), rep(.25,n_players/2))
-
 sim_games_twogames <- lapply(players_twogames, function(x)({
   rolls <- tibble(game = x, status = ifelse(runif(n_games) < x,"win","loss"), streak = 0)
   for(i in seq(1, n_games)){
@@ -568,7 +563,6 @@ sim_games_twogames <- lapply(players_twogames, function(x)({
   bind_rows() %>% 
   mutate(status_pred = lead(status, n = 1)) %>% 
   drop_na()
-
 winstreak_obs_winprob_twogames <- lapply(seq(1,10), function(i){
   sim_games_twogames %>% 
   mutate(winstreak = ((status == "win")&(streak == i))) %>%
@@ -578,7 +572,6 @@ winstreak_obs_winprob_twogames <- lapply(seq(1,10), function(i){
 }) %>%
   bind_rows() %>%
   mutate(winstreak = ifelse(winstreak, "In win streak", "Off win streak"))
-
 losingstreak_obs_winprob_twogames <- lapply(seq(1,10), function(i){
   sim_games_twogames %>% 
   mutate(lossstreak = ((status == "loss")&(streak == i))) %>%
@@ -588,19 +581,14 @@ losingstreak_obs_winprob_twogames <- lapply(seq(1,10), function(i){
 }) %>%
   bind_rows() %>%
   mutate(lossstreak = ifelse(lossstreak, "In loss streak", "Off loss streak"))
-
 #Combining simulations
-
 winstreak_obs_winprob_combined <- winstreak_obs_winprob_uniform %>% mutate(riskdist = "Uniform") %>%
   bind_rows(winstreak_obs_winprob_satoshi %>% mutate(riskdist = "Satoshi")) %>%
   bind_rows(winstreak_obs_winprob_twogames %>% mutate(riskdist = "Binary"))
-
 losingstreak_obs_winprob_combined <- losingstreak_obs_winprob_uniform %>% mutate(riskdist = "Uniform") %>%
   bind_rows(losingstreak_obs_winprob_satoshi %>% mutate(riskdist = "Satoshi")) %>%
   bind_rows(losingstreak_obs_winprob_twogames %>% mutate(riskdist = "Binary"))
-
 #Creating plot
-
 simu_win <- ggplot(winstreak_obs_winprob_combined %>%
                      mutate(winstreak = ifelse(winstreak == "Off win streak","Off streak","On streak")), 
                    aes(x=streak, y=obs_pwin, group=interaction(winstreak, riskdist))) +
@@ -634,7 +622,6 @@ simu_win <- ggplot(winstreak_obs_winprob_combined %>%
           shape = guide_legend(order = 2),
           linetype = guide_legend(order = 1)) + 
   xlim(c(0.9,6.1))
-
 simu_loss <- ggplot(losingstreak_obs_winprob_combined %>%
                      mutate(lossstreak = ifelse(lossstreak == "Off loss streak","Off streak","On streak")), 
                     aes(x=streak, y=obs_pwin, group=interaction(lossstreak, riskdist))) +
@@ -668,163 +655,22 @@ simu_loss <- ggplot(losingstreak_obs_winprob_combined %>%
           shape = guide_legend(order = 2),
           linetype = guide_legend(order = 1)) + 
   xlim(c(0.9,6.1))
-
 ggpubr::ggarrange(simu_win, simu_loss,
           ncol = 2, nrow = 1,  common.legend = TRUE, legend="bottom")
+
+setwd(WORKDIR)
+ggsave("plots/figure_1_2.0.pdf", device = "pdf", width = 36.52,  height = 12.63,  units = "cm")
 ```
 
-## ANOVA analysis as per Demaree
-
-Here we perform the ANOVA analysis used to produce Table 3. The repeated anova measures are provided by the TukeyHSD function. The observation counts, mean differences and significance can be extracted manually from the outputs.
-
-```{r}
-
-dset_anova <- pooled_table_unscaled %>% 
-  select(pwin, streak, streak_total_length, status)
-
-
-#cases for win streaks
-win_1 <- dset_anova %>% 
-  filter(streak_total_length > 0 , streak < 2, status == "win") %>%
-  mutate(streak = factor(streak, ordered = TRUE))
-
-anova_one_way <- aov(pwin~streak, data = win_1)
-summary(anova_one_way)
-TukeyHSD(anova_one_way)
-
-win_2 <- dset_anova %>% 
-  filter(streak_total_length > 1 , streak < 3, status == "win") %>%
-  mutate(streak = factor(streak, ordered = TRUE))
-
-anova_one_way <- aov(pwin~streak, data = win_2)
-summary(anova_one_way)
-TukeyHSD(anova_one_way)
-
-win_3 <- dset_anova %>% 
-  filter(streak_total_length > 2 , streak < 4, status == "win") %>%
-  mutate(streak = factor(streak, ordered = TRUE))
-
-anova_one_way <- aov(pwin~streak, data = win_3)
-summary(anova_one_way)
-TukeyHSD(anova_one_way)
-
-win_4 <- dset_anova %>% 
-  filter(streak_total_length > 3 , streak < 5, status == "win") %>%
-  mutate(streak = factor(streak, ordered = TRUE))
-
-anova_one_way <- aov(pwin~streak, data = win_4)
-summary(anova_one_way)
-TukeyHSD(anova_one_way)
-
-win_5 <- dset_anova %>% 
-  filter(streak_total_length > 4 , streak < 6, status == "win") %>%
-  mutate(streak = factor(streak, ordered = TRUE))
-
-anova_one_way <- aov(pwin~streak, data = win_5)
-summary(anova_one_way)
-TukeyHSD(anova_one_way)
-
-win_6 <- dset_anova %>% 
-  filter(streak_total_length > 5 , streak < 7, status == "win") %>%
-  mutate(streak = factor(streak, ordered = TRUE))
-
-anova_one_way <- aov(pwin~streak, data = win_6)
-summary(anova_one_way)
-TukeyHSD(anova_one_way)
-
-win_7 <- dset_anova %>% 
-  filter(streak_total_length > 6 , streak < 8, status == "win") %>%
-  mutate(streak = factor(streak, ordered = TRUE))
-
-anova_one_way <- aov(pwin~streak, data = win_7)
-summary(anova_one_way)
-TukeyHSD(anova_one_way)
-
-#cases for loss streaks
-
-loss_1 <- dset_anova %>% 
-  filter(streak_total_length > 0 , streak < 2, status != "win") %>%
-  mutate(streak = factor(streak, ordered = TRUE))
-
-ggplot(loss_1, aes(x = streak, y = pwin, fill = streak)) +
-    geom_boxplot() +
-    theme_classic()
-
-anova_one_way <- aov(pwin~streak, data = loss_1)
-summary(anova_one_way)
-
-print("dddddd")
-TukeyHSD(anova_one_way)
-
-loss_2 <- dset_anova %>% 
-  filter(streak_total_length > 1 , streak < 3, status != "win") %>%
-  mutate(streak = factor(streak, ordered = TRUE))
-
-ggplot(loss_2, aes(x = streak, y = pwin, fill = streak)) +
-    geom_boxplot() +
-    theme_classic()
-
-anova_one_way <- aov(pwin~streak, data = loss_2)
-summary(anova_one_way)
-TukeyHSD(anova_one_way)
-
-loss_3 <- dset_anova %>% 
-  filter(streak_total_length > 2 , streak < 4, status != "win") %>%
-  mutate(streak = factor(streak, ordered = TRUE))
-
-ggplot(loss_3, aes(x = streak, y = pwin, fill = streak)) +
-    geom_boxplot() +
-    theme_classic()
-
-anova_one_way <- aov(pwin~streak, data = loss_3)
-summary(anova_one_way)
-TukeyHSD(anova_one_way)
-
-loss_4 <- dset_anova %>% 
-  filter(streak_total_length > 3 , streak < 5, status != "win") %>%
-  mutate(streak = factor(streak, ordered = TRUE))
-
-anova_one_way <- aov(pwin~streak, data = loss_4)
-summary(anova_one_way)
-TukeyHSD(anova_one_way)
-
-loss_5 <- dset_anova %>% 
-  filter(streak_total_length > 4 , streak < 6, status != "win") %>%
-  mutate(streak = factor(streak, ordered = TRUE))
-
-anova_one_way <- aov(pwin~streak, data = loss_5)
-summary(anova_one_way)
-TukeyHSD(anova_one_way)
-
-loss_6 <- dset_anova %>% 
-  filter(streak_total_length > 5 , streak < 7, status != "win") %>%
-  mutate(streak = factor(streak, ordered = TRUE))
-
-anova_one_way <- aov(pwin~streak, data = loss_6)
-summary(anova_one_way)
-TukeyHSD(anova_one_way)
-
-loss_7 <- dset_anova %>% 
-  filter(streak_total_length > 6 , streak < 8, status != "win") %>%
-  mutate(streak = factor(streak, ordered = TRUE))
-
-anova_one_way <- aov(pwin~streak, data = loss_7)
-summary(anova_one_way)
-TukeyHSD(anova_one_way)
-
-```
-
-## After win streaks XU ANSWER REPLICATION
+# After win streaks XU ANSWER REPLICATION
 
 Here we have tried to replicate the analysis Xu and Harvey presented as a reaction to the critique of Demaree. They calculate average of user risk propensity, depending on the longest win/loss streaks reached by those users. They first create risk propensities for players, averaging the players' chosen risk probabilites in their games and then averaging over the users, thus weighing the propensity of all users equally. We on the other hand only did the averaging over the games, after assigning them to the maximum streak lengths, thus weighing user propensities by the number of bets placed. The script produces figure 6.
 
 ```{r}
-
 #no averaging on user level before aggregation
 #this represents the right thing to do
-
 dset_xuanswer_longest_streak_length_signed_nonaggreg <- pooled_table_unscaled %>% 
-  select(userID, PriceMultiplier, pwin, streak, streak_total_length, status) %>%
+  select(userID, odds, pwin, streak, streak_total_length, status) %>%
   mutate(streak_total_length_signed = ifelse(status == "win", streak_total_length, -streak_total_length)) %>%
   group_by(userID) %>%
   mutate(streak_max_win = pmax(max(streak_total_length_signed),0),
@@ -832,19 +678,18 @@ dset_xuanswer_longest_streak_length_signed_nonaggreg <- pooled_table_unscaled %>
   ungroup() %>%
   {bind_rows(group_by(., streak_max_win) %>%
                summarise(mean_pwin = mean(pwin),
-                         mean_multip = mean(PriceMultiplier),
+                         mean_multip = mean(odds),
                          n_of = n(),
                          .groups = "drop") %>%
                mutate(status = "win") %>%
                rename(streak_max = streak_max_win),
              group_by(.,streak_max_loss) %>%
                summarise(mean_pwin = mean(pwin),
-                         mean_multip = mean(PriceMultiplier),
+                         mean_multip = mean(odds),
                          n_of = n(),
                          .groups = "drop") %>%
                mutate(status = "loss") %>%
                rename(streak_max = streak_max_loss))}
-
 ggplot(dset_xuanswer_longest_streak_length_signed_nonaggreg, aes(x=streak_max, y=mean_pwin, group=status)) +
   geom_line(aes(color=status))+
   ggtitle("Mean pwin with vs longest win/loss streak experienced (no averaging for users / our approach)") +
@@ -852,18 +697,16 @@ ggplot(dset_xuanswer_longest_streak_length_signed_nonaggreg, aes(x=streak_max, y
   ylab("Mean pwin") + 
   labs(group = "Win/loss streak") +
   xlim(0,6)
-
 #creating user averages before aggregation
 #this represents the way Xu probably did it
-
 dset_xuanswer_longest_streak_length_signed_useraggr <- pooled_table_unscaled %>% 
-  select(userID, PriceMultiplier, pwin, streak, streak_total_length, status) %>%
+  select(userID, odds, pwin, streak, streak_total_length, status) %>%
   mutate(streak_total_length_signed = ifelse(status == "win", streak_total_length, -streak_total_length)) %>%
   group_by(userID) %>%
   summarise(streak_max_win = pmax(max(streak_total_length_signed),0),
          streak_max_loss = abs(pmin(min(streak_total_length_signed),0)),
          user_mean_pwin = mean(pwin),
-         user_mean_multip = mean(PriceMultiplier),
+         user_mean_multip = mean(odds),
          n_games = n(),
          .groups = "drop") %>%
   {bind_rows(group_by(., streak_max_win) %>%
@@ -880,7 +723,6 @@ dset_xuanswer_longest_streak_length_signed_useraggr <- pooled_table_unscaled %>%
                          .groups = "drop") %>%
                mutate(status = "loss") %>%
                rename(streak_max = streak_max_loss))}
-
 xuanswer_us <- ggplot(dset_xuanswer_longest_streak_length_signed_nonaggreg %>%
                       mutate(status = ifelse(status == "win","Win","Loss")), 
                       aes(x=streak_max, y=mean_pwin/100, group=status)) +
@@ -911,7 +753,6 @@ xuanswer_us <- ggplot(dset_xuanswer_longest_streak_length_signed_nonaggreg %>%
       linetype = "Streak type",
       shape = "Streak type") + 
   xlim(0,6)
-
 xuanswer_them <- ggplot(dset_xuanswer_longest_streak_length_signed_useraggr%>%
                       mutate(status = ifelse(status == "win","Win","Loss")),
                       aes(x=streak_max, y=mean_pwin/100, group=status)) +
@@ -942,7 +783,9 @@ xuanswer_them <- ggplot(dset_xuanswer_longest_streak_length_signed_useraggr%>%
       linetype = "Streak type:",
       shape = "Streak type:") + 
   xlim(0,6)
-
 ggpubr::ggarrange(xuanswer_them, xuanswer_us,
           ncol = 2, nrow = 1,  common.legend = TRUE, legend="bottom")
+
+setwd(WORKDIR)
+ggsave("plots/figure_6_2.0.pdf", device = "pdf", width = 36.52,  height = 12.63,  units = "cm")
 ```
