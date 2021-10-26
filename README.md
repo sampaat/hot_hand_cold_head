@@ -38,7 +38,7 @@ With questions about the dataset or the process, contact Máté Sándor (sampaat
   1. Sándor, M.C., Bakó, B (2021). Approaching the Hot Hand with a Cool Head (Working paper)
   2. Kondor, D., Pósfai, M., Csabai, I., & Vattay, G. (2014). Do the rich get richer? An empirical analysis of the BitCoin transaction network. PLoS ONE, 9(2), e86197. https://doi.org/10.1371/journal.pone.0086197
   3. https://doi.org/10.5061/dryad.qz612jmcf
-  4. https://doi.org/10.5281/zenodo.5552916
+  4. [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.5600259.svg)](https://doi.org/10.5281/zenodo.5600259)
   5. https://web.archive.org/web/20130403062213/http://www.satoshidice.com/
   
 
