@@ -3,7 +3,7 @@ Data preparatory and analytical scripts of "Approaching the Hot Hand with a Cool
 
 This script set reproduces the results presented in (**1**)
 
-To run the scripts use R version 4.0.0 (2020-04-24) and the package versions as specified with groundhog.
+To run the scripts use R version 4.0.0 (2020-04-24) and the package versions as specified using groundhog.
 
 ## Producing the gambling dataset
 
@@ -11,7 +11,7 @@ The gambling dataset was created using the transactional data extractable from t
 
 ## The prepared gambling dataset
 
-The 5 samples that we have created are made available at (**4**). These contain bets placed at SatoshiDice, a bitcoin based gambling site that was the most popular of such in 2012-14 and using the public information available in the ledger and the user contraction approximation of (**2**). A representative archive state of the game and the website is available at (**5**).
+The 5 samples that we have created are made available at (**4**). These contain bets placed at SatoshiDice, a bitcoin based gambling site that was the most popular of such between 2012 and 2014 and using the public information available in the ledger and the user contraction approximation of (**2**). A representative archive state of the game and the website is available at (**5**).
 
 The columns featured in the dataset (names in the first row):
 
