@@ -23,14 +23,14 @@ Important quantities created (for this article that is):
   * status_pred - status of the next game played 
   * pwin_pred - pwin of the following game
   * game_changed - logical variable, TRUE if a different game (pwin/odds/mulitplier) have been bet on after the current game
-  * streak_total_length - the total length of the streak the current game is part of
 
 ```{r echo=FALSE, cache=FALSE, results=FALSE, warning=FALSE, comment=FALSE, warning=FALSE}
-require(groundhog)
-groundhog.day="2021-03-01"
-pkgs=c('tidyverse','ggpubr')
-groundhog.library(pkgs, groundhog.day)
+# require(groundhog)
+# groundhog.day="2021-03-01"
+# pkgs=c('tidyverse','ggpubr')
+# groundhog.library(pkgs, groundhog.day)
 
+#WORKDIR <- "C:/Users/sampa/Documents/bce-bitluck" #set this for your own working directory
 WORKDIR <- "/Users/sandorm/bce-bitluck" #set this for your own working directory
 
 normalizeToBitcoin <- function(user_bets){
@@ -100,6 +100,7 @@ extractAndPrepareUser <- function(x,...){
     left_join(pwin_to_prob, by = "odds") %>%
     mutate(bet_changed = bet_pred != bet_value,
            game_changed = game_pred != odds,
+           risk_increased = game_pred > odds,
            exp_changed = bet_pred*game_pred != bet_value*odds,
            bet_changed_factor = sign(bet_value-bet_pred) %>% factor(levels = c(0,1,-1)),
            game_changed_factor = sign(game_pred-odds) %>% factor(levels = c(0,1,-1)),
@@ -128,6 +129,7 @@ extractAndPrepareUser <- function(x,...){
       ret$streak[i] = 0
       ret$stay_length[i] = 1
       ret$game_streak[i] = 0
+      ret$risk_lowhold_streak[i] = 0
     }else{ 
       #win streak
       if(ret$status[i] == ret$status[i-1]){
@@ -146,6 +148,12 @@ extractAndPrepareUser <- function(x,...){
         ret$game_streak[i] = ret$game_streak[i-1]+1
       }else{
         ret$game_streak[i] = 0
+      }
+      #game streak 
+      if(!ret$risk_lowhold_streak[i]){
+        ret$risk_lowhold_streak[i] = ret$risk_lowhold_streak[i-1]+1
+      }else{
+        ret$risk_lowhold_streak[i] = 0
       }
     }
   }
@@ -230,6 +238,26 @@ pooled_table_unscaled %>%
 On streak of n means the game followed n-1 games without changing the outcome at any. Off streak of n means the game has followed n-1 games of any but the same outcomes as the current one. Here we calculate the ratio of wins to losses following game histories on/off streak of n. The plot produces figure 2.
 
 ```{r}
+#diszno
+winstreak_obs_winprob <- lapply(seq(1,10), function(i){
+  pooled_table_unscaled %>%
+  mutate(winstreak = ((status == "win")&(streak == i))) %>%
+  mutate(gchan = ifelse(!game_changed, "No change", ifelse(risk_increased, "Risk increased", "Risk decreased"))) %>%
+  mutate(game_never_changed = streak >= game_streak) %>%
+  group_by(winstreak, label, gchan) %>%
+  summarize(nof = n(), obs_pwin = sum(status_pred == "win")/n(), .groups = "drop") %>%
+  mutate(streak = i) %>%
+  group_by(label) %>%
+  mutate(n_normed = nof/sum(nof))}) %>%
+  bind_rows() %>%
+  mutate(winstreak = ifelse(winstreak, "On streak", "Off streak"))
+
+ggplot(winstreak_obs_winprob, aes(x=streak, y=obs_pwin, group=interaction(winstreak, label))) +
+  geom_line(aes(color = label, linetype = label), size = 1)+
+  geom_point(aes(shape = winstreak), size = 2.2) + facet_wrap(vars(gchan))+
+    scale_y_continuous(labels=scales::percent_format(), limits = c(.1,.9))
+
+#diszno end
 winstreak_obs_winprob <- lapply(seq(1,10), function(i){
   pooled_table_unscaled %>% 
   mutate(winstreak = ((status == "win")&(streak == i))) %>%
@@ -243,7 +271,7 @@ winstreak_obs_winprob <- lapply(seq(1,10), function(i){
 
 in_win_plot <- ggplot(winstreak_obs_winprob, aes(x=streak, y=obs_pwin, group=interaction(winstreak, label))) +
   geom_line(aes(color = label, linetype = label), size = 1)+
-  geom_point(aes(shape = winstreak), size = 2) +
+  geom_point(aes(shape = winstreak), size = 2.2) +
     theme_light() +
     theme(
       axis.title.x = element_text(colour="black", size = 13),
@@ -260,7 +288,7 @@ in_win_plot <- ggplot(winstreak_obs_winprob, aes(x=streak, y=obs_pwin, group=int
     )  +
     scale_color_manual(values = c("#E7033C","#096773","#F9CC2C","#13C062","#111460")) +
     scale_linetype_manual(values = c(1,3,2,4,5)) +
-    scale_shape_manual(values=c(24, 25))+
+    scale_shape_manual(values=c(25, 24))+
     scale_y_continuous(labels=scales::percent_format(), limits = c(.1,.9)) +
     labs(
       x = "Winning streak length",
@@ -285,7 +313,7 @@ lossstreak_obs_winprob <- lapply(seq(1,10), function(i){
 
 in_loss_plot <- ggplot(lossstreak_obs_winprob, aes(x=streak, y=obs_pwin, group=interaction(lossstreak, label))) +
   geom_line(aes(color = label, linetype = label), size = 1)+
-  geom_point(aes(shape = lossstreak), size = 2) +
+  geom_point(aes(shape = lossstreak), size = 2.2) +
     theme_light() +
     theme(
       axis.title.x = element_text(colour="black", size = 13),
@@ -316,7 +344,7 @@ ggpubr::ggarrange(in_win_plot, in_loss_plot,
                   ncol = 2, nrow = 1,  common.legend = TRUE, legend="bottom")
 
 setwd(WORKDIR)
-ggsave("plots/figure_2_2.0.pdf", device = "pdf", width = 36.52,  height = 12.63,  units = "cm")
+ggsave("plots/figure_2_2.2.pdf", device = "pdf", width = 36.52,  height = 12.63,  units = "cm")
 ```
 
 # Mean pwin after streak
@@ -333,7 +361,7 @@ streak_odds_pwin <- pooled_table_unscaled %>%
 
 ggplot(streak_odds_pwin, aes(x=streak, y=mean_pwin/100, group=interaction(status, label))) +
   geom_line(aes(color = label, linetype = label), size = 1)+
-  geom_point(aes(shape = status), size = 2) +
+  geom_point(aes(shape = status), size = 2.2) +
     theme_light() +
     theme(
       axis.title.x = element_text(colour="black", size = 13),
@@ -364,7 +392,7 @@ ggplot(streak_odds_pwin, aes(x=streak, y=mean_pwin/100, group=interaction(status
   xlim(c(0,6.1))
 
 setwd(WORKDIR)
-ggsave("plots/figure_3_2.0.pdf", device = "pdf", width = 18.26,  height = 12.63,  units = "cm")
+ggsave("plots/figure_3_2.1.pdf", device = "pdf", width = 18.26,  height = 12.63,  units = "cm")
 ```
 
 # Probability of changing pwin
@@ -372,16 +400,100 @@ ggsave("plots/figure_3_2.0.pdf", device = "pdf", width = 18.26,  height = 12.63,
 Here we calculate the ratio of when the game changes (vs when it is not) following win/loss streaks of n. Produces figure 4.
 
 ```{r}
+#diszno
+pwin_change_prob <- pooled_table_unscaled %>%
+  filter(streak <7) %>%
+  mutate(status = ifelse(status == "loss", "Loss", "Win")) %>%
+  group_by(streak, status) %>%
+  summarize(no_change_prob = sum(!game_changed)/n(), 
+            change_risk_increased = sum(risk_increased)/n(),
+            change_risk_decreased = sum(game_changed&(!risk_increased))/n(),
+            .groups = "drop"
+            ) %>%
+  pivot_longer(cols = c("no_change_prob","change_risk_increased","change_risk_decreased"),
+               names_to = "delta")%>%
+  mutate(delta = ifelse(delta == "no_change_prob", "No change", ifelse(delta == "change_risk_increased", "Risk increase", "Risk decrease"))) %>%
+  mutate(delta = factor(delta, levels = c("Risk increase", "No change", "Risk decrease")))
+  
+
+changeprob_win_plot <-  ggplot(pwin_change_prob %>% filter(status == "Win"), 
+                               aes(fill=delta, y=value, x=streak)) +
+  geom_col(position = "fill") + 
+  theme_light() +
+  geom_text(aes(label = floor(value*100)),position = position_stack(vjust = 0.5)) +
+  scale_fill_manual(values = c("#E7033C","#096773","#13C062","#F9CC2C","#111460")) +
+  theme(
+    axis.title.x = element_text(colour="black", size = 13),
+    axis.title.y = element_text(colour="black", size = 13),
+    axis.text.y = element_text(size = 12),
+    axis.text.x = element_text(size = 12),
+    legend.position =  "right",
+    legend.direction = "horizontal",
+    legend.spacing.x = unit(.8, 'cm'),
+    legend.text = element_text(colour="black", size = 12),
+    legend.title = element_text(colour="black", size = 14),
+    line = element_line(size = 2.5, lineend = "butt"),
+    legend.key.size = grid::unit(4, "lines"),
+    legend.key.width = unit(.8,"cm"),
+    legend.key.height = unit(1,"cm"),
+    strip.text.y = element_text(
+        size = 13, color = "white", face = "bold"
+        )
+  )+ 
+  scale_y_continuous(labels=scales::percent_format(accuracy = 5L)) +
+  labs(
+    x = "Streak length (win)",
+    y = "Probability of change in game",
+    fill = "Change in risk taken:")
+
+changeprob_loss_plot <-  ggplot(pwin_change_prob %>% filter(status == "Loss"), 
+                               aes(fill=delta, y=value, x=streak)) +
+  geom_col(position = "fill") + 
+  theme_light() +
+  geom_text(aes(label = floor(value*100)),position = position_stack(vjust = 0.5)) +
+  scale_fill_manual(values = c("#E7033C","#096773","#13C062","#F9CC2C","#111460")) +
+  theme(
+    axis.title.x = element_text(colour="black", size = 13),
+    axis.title.y = element_text(colour="black", size = 13),
+    axis.text.y = element_text(size = 12),
+    axis.text.x = element_text(size = 12),
+    legend.position =  "right",
+    legend.direction = "horizontal",
+    legend.spacing.x = unit(.8, 'cm'),
+    legend.text = element_text(colour="black", size = 12),
+    legend.title = element_text(colour="black", size = 14),
+    line = element_line(size = 2.5, lineend = "butt"),
+    legend.key.size = grid::unit(4, "lines"),
+    legend.key.width = unit(.8,"cm"),
+    legend.key.height = unit(1,"cm"),
+    strip.text.y = element_text(
+        size = 13, color = "white", face = "bold"
+        )
+  )+ 
+  scale_y_continuous(labels=scales::percent_format(accuracy = 5L)) +
+  labs(
+    x = "Streak length (loss)",
+    y = "Probability of change in game",
+    fill = "Change in risk taken:")
+
+ggpubr::ggarrange(changeprob_win_plot, changeprob_loss_plot, 
+                  ncol = 2, nrow = 1,  common.legend = TRUE, legend="bottom")
+
+setwd(WORKDIR)
+
+ggsave("plots/figure_4_5.1.pdf", device = "pdf", width = 36.52,  height = 12.63,  units = "cm")
+#diszno vege
+
 pwin_change_prob <- pooled_table_unscaled %>%
   filter(streak <7) %>%
   mutate(status = ifelse(status == "loss", "Loss", "Win")) %>%
   group_by(streak, status) %>%
   summarize(change_prob = sum(game_changed)/n(), .groups = "drop")
 
-ggplot(pwin_change_prob, aes(fill=status, y=change_prob, x=streak)) +
+ggplot(pwin_change_prob,aes(fill=status, y=change_prob, x=streak)) +
   geom_col(position = "dodge2") + 
   theme_light() +
-  scale_fill_manual(values = c("#13C062","#E7033C")) +
+  scale_fill_manual(values = c("#E7033C","#13C062")) +
   theme(
     axis.title.x = element_text(colour="black", size = 13),
     axis.title.y = element_text(colour="black", size = 13),
@@ -402,15 +514,44 @@ ggplot(pwin_change_prob, aes(fill=status, y=change_prob, x=streak)) +
     y = "Probability of change in game",
     fill = "Streak type:")
 
-
 setwd(WORKDIR)
-ggsave("plots/figure_4_2.0.pdf", device = "pdf", width = 18.26,  height = 12.63,  units = "cm")
+ggsave("plots/figure_4_3.0.pdf", device = "pdf", width = 18.26,  height = 12.63,  units = "cm")
 ```
 # Size of pwin change
 
 Here we calculate the relative size of change in pwin. Here -1 means halving pwin compared to the current game (e.g. from 50% to 25%) and +1 means doubling it (e.g. from 1% to 2%). Logarithmic scale is used to normalise the distribution of the ratios, a well known technique from finance. This section produces figure 5.
 
 ```{r}
+#dizsnokodas
+
+pwin_change_relative <- pooled_table_unscaled %>% 
+  filter((streak < 7)) %>%
+  mutate(streak_signed = ifelse(status == "win",streak,-streak)) %>%
+  group_by(streak_signed, label) %>%
+  summarize(
+    no_changer_ratio = sum(streak<game_streak)/n(), 
+            .groups = "drop")
+
+ggplot(data = pwin_change_relative, aes(x = factor(streak_signed), y = no_changer_ratio, group = label)) +
+  geom_point(aes(color = label, shape = label), size = 4)
+
+pwin_change_relative <- pooled_table_unscaled %>% 
+  filter((streak < 7) & game_changed) %>%
+  mutate(streak_signed = ifelse(status == "win",streak,-streak)) %>%
+  group_by(streak_signed, label, risk_increased) %>%
+  summarize(
+    game_diff_mean = mean(game_diff),
+    game_diff_median = median(game_diff), 
+            .groups = "drop")
+
+ggplot(data = pwin_change_relative, aes(x = factor(streak_signed), y = abs(game_diff_mean), group = label)) +
+  geom_point(aes(color = label, shape = label), size = 4) +
+  facet_grid(vars(ifelse(risk_increased, "More risk", "Less risk")))
+
+
+#disznokodas vege
+
+
 pwin_change_relative <- pooled_table_unscaled %>% 
   filter((streak < 7) & game_changed) %>%
   mutate(streak_signed = ifelse(status == "win",streak,-streak)) %>%
@@ -421,9 +562,40 @@ pwin_change_relative <- pooled_table_unscaled %>%
     game_diff_median = median(game_diff_ratio+1), 
             .groups = "drop")
 
-pwin_change_relative %>%
-  {ggplot(data = ., aes(x = factor(streak_signed), y = game_diff_logmean, group = label)) +
-  geom_point(aes(color = label, shape = label), size = 4) +
+dset_change_relative <- pooled_table_unscaled %>% 
+  filter((streak < 7) & game_changed) %>%
+  mutate(streak_signed = ifelse(status == "win",streak,-streak)) %>%
+  mutate(game_diff_ratio_log = log(game_diff_ratio+1, base = 2)) %>%
+  select(streak_signed, label, game_diff_ratio_log)
+
+logmean <- function(data, i){
+  mean(data[i])
+}
+
+p_level <- .01 #that is 1%
+
+pwin_change_relative_boot <- dset_change_relative %>%
+  group_by(streak_signed, label) %>%
+  group_modify(
+    function(.x,...){
+    bootout <- boot::boot(.x$game_diff_ratio_log, 
+             logmean, 
+             R = 10000
+    )
+    return(
+      tibble(
+        logmean = mean(.x$game_diff_ratio_log),
+        bottom = quantile(bootout$t, p_level/2),
+        top = quantile(bootout$t, 1-p_level/2)
+        )
+      )
+    }
+  )
+
+pwin_change_relative_boot %>%
+  {ggplot(data = ., aes(x = factor(streak_signed), y = logmean, group = label)) +
+  geom_point(aes(color = label, shape = label), size = 4)+
+  geom_errorbar(aes(ymin = top, ymax = bottom, color = label), position = position_dodge(0.1)) +
   geom_hline(yintercept = 0) + 
   geom_vline(xintercept = which(levels(factor(.$streak_signed)) %in% '0')) +
     theme_light() +
@@ -442,16 +614,16 @@ pwin_change_relative %>%
     )  +
     scale_color_manual(values = c("#F9CC2C","#096773","#E7033C","#13C062","#111460")) +
     scale_shape_manual(values = c(15,16,24,18,25)) +
-    #scale_y_continuous(trans = scales::log2_trans()) +
+    #scale_y_continuous(labels = scales::trans_format(function(x)2^x, scales::math_format(.x))) +
     labs(
       x = "losing                   Streak                 winning",
       #y = "Mean of relative change in winning probability",
-      y = latex2exp::TeX("Change in winning probabilities"),
+      y = latex2exp::TeX("Mean log relative change in winning probabilities"),
       color = "Sample:",
       shape = "Sample:")}
 
 setwd(WORKDIR)
-ggsave("plots/figure_5_2.6.pdf", device = "pdf", width = 18.26,  height = 12.63,  units = "cm")
+ggsave("plots/figure_5_3.2.pdf", device = "pdf", width = 18.26,  height = 12.63,  units = "cm")
 ```
 
 # Simulations
@@ -600,8 +772,8 @@ simu_win <- ggplot(winstreak_obs_winprob_combined %>%
       axis.title.y = element_text(colour="black", size = 13),
       axis.text.y = element_text(size = 12),
       axis.text.x = element_text(size = 12),
-      legend.position =  "bottom",
-      legend.direction = "horizontal",
+      legend.position =  "right",
+      legend.direction = "vertical",
       legend.text = element_text(colour="black", size = 12),
       legend.title = element_text(colour="black", size = 14),
       line = element_line(size = 2.5, lineend = "butt"),
@@ -626,7 +798,7 @@ simu_loss <- ggplot(losingstreak_obs_winprob_combined %>%
                      mutate(lossstreak = ifelse(lossstreak == "Off loss streak","Off streak","On streak")), 
                     aes(x=streak, y=obs_pwin, group=interaction(lossstreak, riskdist))) +
   geom_line(aes(color = riskdist, linetype = riskdist), size = 1)+
-  geom_point(aes(shape = lossstreak), size = 1.5) +
+  geom_point(aes(shape = lossstreak), size = 2.2) +
     theme_light() +
     theme(
       axis.title.x = element_text(colour="black", size = 13),
@@ -659,7 +831,7 @@ ggpubr::ggarrange(simu_win, simu_loss,
           ncol = 2, nrow = 1,  common.legend = TRUE, legend="bottom")
 
 setwd(WORKDIR)
-ggsave("plots/figure_1_2.0.pdf", device = "pdf", width = 36.52,  height = 12.63,  units = "cm")
+ggsave("plots/figure_1_2.1.pdf", device = "pdf", width = 36.52,  height = 12.63,  units = "cm")
 ```
 
 # After win streaks XU ANSWER REPLICATION

@@ -284,4 +284,3 @@ bet_match_finallized_merged_usered_tosave <- bet_match_finallized_usered[,-12] %
 
 #be sure to change the save files between windows so you do not overwrite your previous files
 write.csv(bet_match_finallized_merged_usered_tosave, file = paste("calcdata/satoshidice_bets_matched_",ranges_selected_data$start[[WINDOW]],"to",ranges_selected_data$end[[WINDOW]],"clean.csv",sep="_"))
-
