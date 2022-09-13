@@ -25,13 +25,13 @@ Important quantities created (for this article that is):
   * game_changed - logical variable, TRUE if a different game (pwin/odds/mulitplier) have been bet on after the current game
 
 ```{r echo=FALSE, cache=FALSE, results=FALSE, warning=FALSE, comment=FALSE, warning=FALSE}
-# require(groundhog)
-# groundhog.day="2021-03-01"
-# pkgs=c('tidyverse','ggpubr')
-# groundhog.library(pkgs, groundhog.day)
+require(groundhog)
+groundhog.day="2021-03-01"
+pkgs=c('tidyverse','ggpubr')
+groundhog.library(pkgs, groundhog.day)
 
-#WORKDIR <- "C:/Users/sampa/Documents/bce-bitluck" #set this for your own working directory
-WORKDIR <- "/Users/sandorm/bce-bitluck" #set this for your own working directory
+WORKDIR <- "C:/Users/sampa/Documents/bce-bitluck" #set this for your own working directory
+#WORKDIR <- "/Users/sandorm/bce-bitluck" #set this for your own working directory
 
 normalizeToBitcoin <- function(user_bets){
   user_bets %>% 
@@ -238,26 +238,6 @@ pooled_table_unscaled %>%
 On streak of n means the game followed n-1 games without changing the outcome at any. Off streak of n means the game has followed n-1 games of any but the same outcomes as the current one. Here we calculate the ratio of wins to losses following game histories on/off streak of n. The plot produces figure 2.
 
 ```{r}
-#diszno
-winstreak_obs_winprob <- lapply(seq(1,10), function(i){
-  pooled_table_unscaled %>%
-  mutate(winstreak = ((status == "win")&(streak == i))) %>%
-  mutate(gchan = ifelse(!game_changed, "No change", ifelse(risk_increased, "Risk increased", "Risk decreased"))) %>%
-  mutate(game_never_changed = streak >= game_streak) %>%
-  group_by(winstreak, label, gchan) %>%
-  summarize(nof = n(), obs_pwin = sum(status_pred == "win")/n(), .groups = "drop") %>%
-  mutate(streak = i) %>%
-  group_by(label) %>%
-  mutate(n_normed = nof/sum(nof))}) %>%
-  bind_rows() %>%
-  mutate(winstreak = ifelse(winstreak, "On streak", "Off streak"))
-
-ggplot(winstreak_obs_winprob, aes(x=streak, y=obs_pwin, group=interaction(winstreak, label))) +
-  geom_line(aes(color = label, linetype = label), size = 1)+
-  geom_point(aes(shape = winstreak), size = 2.2) + facet_wrap(vars(gchan))+
-    scale_y_continuous(labels=scales::percent_format(), limits = c(.1,.9))
-
-#diszno end
 winstreak_obs_winprob <- lapply(seq(1,10), function(i){
   pooled_table_unscaled %>% 
   mutate(winstreak = ((status == "win")&(streak == i))) %>%
@@ -400,7 +380,6 @@ ggsave("plots/figure_3_2.1.pdf", device = "pdf", width = 18.26,  height = 12.63,
 Here we calculate the ratio of when the game changes (vs when it is not) following win/loss streaks of n. Produces figure 4.
 
 ```{r}
-#diszno
 pwin_change_prob <- pooled_table_unscaled %>%
   filter(streak <7) %>%
   mutate(status = ifelse(status == "loss", "Loss", "Win")) %>%
@@ -482,76 +461,12 @@ ggpubr::ggarrange(changeprob_win_plot, changeprob_loss_plot,
 setwd(WORKDIR)
 
 ggsave("plots/figure_4_5.1.pdf", device = "pdf", width = 36.52,  height = 12.63,  units = "cm")
-#diszno vege
-
-pwin_change_prob <- pooled_table_unscaled %>%
-  filter(streak <7) %>%
-  mutate(status = ifelse(status == "loss", "Loss", "Win")) %>%
-  group_by(streak, status) %>%
-  summarize(change_prob = sum(game_changed)/n(), .groups = "drop")
-
-ggplot(pwin_change_prob,aes(fill=status, y=change_prob, x=streak)) +
-  geom_col(position = "dodge2") + 
-  theme_light() +
-  scale_fill_manual(values = c("#E7033C","#13C062")) +
-  theme(
-    axis.title.x = element_text(colour="black", size = 13),
-    axis.title.y = element_text(colour="black", size = 13),
-    axis.text.y = element_text(size = 12),
-    axis.text.x = element_text(size = 12),
-    legend.position =  "right",
-    legend.direction = "vertical",
-    legend.text = element_text(colour="black", size = 12),
-    legend.title = element_text(colour="black", size = 14),
-    line = element_line(size = 2.5, lineend = "butt"),
-    legend.key.size = grid::unit(4, "lines"),
-    legend.key.width = unit(.8,"cm"),
-    legend.key.height = unit(1,"cm")
-  ) + 
-  scale_y_continuous(labels=scales::percent_format(accuracy = 5L), limits = c(.0,.5)) +
-  labs(
-    x = "Streak length",
-    y = "Probability of change in game",
-    fill = "Streak type:")
-
-setwd(WORKDIR)
-ggsave("plots/figure_4_3.0.pdf", device = "pdf", width = 18.26,  height = 12.63,  units = "cm")
 ```
 # Size of pwin change
 
 Here we calculate the relative size of change in pwin. Here -1 means halving pwin compared to the current game (e.g. from 50% to 25%) and +1 means doubling it (e.g. from 1% to 2%). Logarithmic scale is used to normalise the distribution of the ratios, a well known technique from finance. This section produces figure 5.
 
 ```{r}
-#dizsnokodas
-
-pwin_change_relative <- pooled_table_unscaled %>% 
-  filter((streak < 7)) %>%
-  mutate(streak_signed = ifelse(status == "win",streak,-streak)) %>%
-  group_by(streak_signed, label) %>%
-  summarize(
-    no_changer_ratio = sum(streak<game_streak)/n(), 
-            .groups = "drop")
-
-ggplot(data = pwin_change_relative, aes(x = factor(streak_signed), y = no_changer_ratio, group = label)) +
-  geom_point(aes(color = label, shape = label), size = 4)
-
-pwin_change_relative <- pooled_table_unscaled %>% 
-  filter((streak < 7) & game_changed) %>%
-  mutate(streak_signed = ifelse(status == "win",streak,-streak)) %>%
-  group_by(streak_signed, label, risk_increased) %>%
-  summarize(
-    game_diff_mean = mean(game_diff),
-    game_diff_median = median(game_diff), 
-            .groups = "drop")
-
-ggplot(data = pwin_change_relative, aes(x = factor(streak_signed), y = abs(game_diff_mean), group = label)) +
-  geom_point(aes(color = label, shape = label), size = 4) +
-  facet_grid(vars(ifelse(risk_increased, "More risk", "Less risk")))
-
-
-#disznokodas vege
-
-
 pwin_change_relative <- pooled_table_unscaled %>% 
   filter((streak < 7) & game_changed) %>%
   mutate(streak_signed = ifelse(status == "win",streak,-streak)) %>%
@@ -617,8 +532,7 @@ pwin_change_relative_boot %>%
     #scale_y_continuous(labels = scales::trans_format(function(x)2^x, scales::math_format(.x))) +
     labs(
       x = "losing                   Streak                 winning",
-      #y = "Mean of relative change in winning probability",
-      y = latex2exp::TeX("Mean log relative change in winning probabilities"),
+      y = "Mean log relative change in winning probabilities",
       color = "Sample:",
       shape = "Sample:")}
 
