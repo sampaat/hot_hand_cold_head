@@ -11,7 +11,7 @@ The gambling dataset was created using the transactional data extractable from t
 
 ## The prepared gambling dataset
 
-The 5 samples that we have created are made available at (**4**). These contain bets placed at SatoshiDice, a bitcoin based gambling site that was the most popular of such between 2012 and 2014 and using the public information available in the ledger and the user contraction approximation of (**2**). A representative archive state of the game and the website is available at [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.5600259.svg)](https://doi.org/10.5281/zenodo.5600259) (**5**).
+The 5 samples that we have created are made available at [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.5600259.svg)](https://doi.org/10.5281/zenodo.5600259) (**4**). These contain bets placed at SatoshiDice, a bitcoin based gambling site that was the most popular of such between 2012 and 2014 and using the public information available in the ledger and the user contraction approximation of (**2**). A representative archive state of the game and the website is available at (**5**).
 
 The columns featured in the dataset (names in the first row):
 
