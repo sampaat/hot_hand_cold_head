@@ -2,6 +2,19 @@
 title: "Approaching the Hot Hand with a Cool Head"
 output: html_notebook
 ---
+# Packages and setup
+
+```{r echo=FALSE, cache=FALSE, results=FALSE, warning=FALSE, comment=FALSE, warning=FALSE}
+library(tidyverse)
+
+WORKDIR <- "C:/Users/sampa/Documents/bce-bitluck" #set this for your own working directory
+
+if(!dir.exists(file.path(WORKDIR, "calcdata"))){print("Inpud data directory 'calcdata' missing!...")}
+
+if(!dir.exists(file.path(WORKDIR, "plots"))){print("Plot dump directory 'plots' missing!...")}
+
+if(list.files(file.path(WORKDIR, "calcdata")) %>% grepl("^satoshidice_bets_matched_",.) %>% sum() < 5 ){print("Some input files may be missing!... Check README.md")}
+```
 
 # The Dataset
 
@@ -18,20 +31,16 @@ Important quantities created (for this article that is):
   * time_bet - unixtime of the bet transaction (timestamp of the block)
   * bet_value - transformed from bet ammount in satoshi to bitcoin (1 satoshi = 1e-8 BTC)
   * streak - length of streak (win/loss) 0 signs that the outcome is different from the previous game's
-  * label - identifier of the sample, check the bitcoin_pricehistory_lowvar.R script for details
+  * label - identifier of the sample, bascially the observed period, check the bitcoin_pricehistory_lowvar.R script or the article for the dates
   * pwin - implied probability of winning (0-100), set from the scraped data, defined using the address the bet has been sent to
   * status_pred - status of the next game played 
   * pwin_pred - pwin of the following game
   * game_changed - logical variable, TRUE if a different game (pwin/odds/mulitplier) have been bet on after the current game
 
 ```{r echo=FALSE, cache=FALSE, results=FALSE, warning=FALSE, comment=FALSE, warning=FALSE}
-require(groundhog)
-groundhog.day="2021-03-01"
-pkgs=c('tidyverse','ggpubr')
-groundhog.library(pkgs, groundhog.day)
+library(tidyverse)
 
 WORKDIR <- "C:/Users/sampa/Documents/bce-bitluck" #set this for your own working directory
-#WORKDIR <- "/Users/sandorm/bce-bitluck" #set this for your own working directory
 
 normalizeToBitcoin <- function(user_bets){
   user_bets %>% 
@@ -321,10 +330,11 @@ in_loss_plot <- ggplot(lossstreak_obs_winprob, aes(x=streak, y=obs_pwin, group=i
   xlim(c(0.9,6.1))
 
 ggpubr::ggarrange(in_win_plot, in_loss_plot, 
-                  ncol = 2, nrow = 1,  common.legend = TRUE, legend="bottom")
+                  ncol = 1, nrow = 2,  common.legend = TRUE, legend="bottom")
 
 setwd(WORKDIR)
-ggsave("plots/figure_2_2.2.pdf", device = "pdf", width = 36.52,  height = 12.63,  units = "cm")
+#ggsave("plots/figure_2_2.2.pdf", device = "pdf", width = 36.52,  height = 12.63,  units = "cm")
+ggsave("plots/figure_2_2.2.pdf", device = "pdf", width = 29,  height = 35,  units = "cm")
 ```
 
 # Mean pwin after streak
@@ -456,11 +466,12 @@ changeprob_loss_plot <-  ggplot(pwin_change_prob %>% filter(status == "Loss"),
     fill = "Change in risk taken:")
 
 ggpubr::ggarrange(changeprob_win_plot, changeprob_loss_plot, 
-                  ncol = 2, nrow = 1,  common.legend = TRUE, legend="bottom")
+                  ncol = 1, nrow = 2,  common.legend = TRUE, legend="bottom")
 
 setwd(WORKDIR)
 
-ggsave("plots/figure_4_5.1.pdf", device = "pdf", width = 36.52,  height = 12.63,  units = "cm")
+#ggsave("plots/figure_4_5.1.pdf", device = "pdf", width = 36.52,  height = 12.63,  units = "cm")
+ggsave("plots/figure_4_5.2.pdf", device = "pdf", width = 20,  height = 28,  units = "cm")
 ```
 # Size of pwin change
 
@@ -870,8 +881,9 @@ xuanswer_them <- ggplot(dset_xuanswer_longest_streak_length_signed_useraggr%>%
       shape = "Streak type:") + 
   xlim(0,6)
 ggpubr::ggarrange(xuanswer_them, xuanswer_us,
-          ncol = 2, nrow = 1,  common.legend = TRUE, legend="bottom")
+          ncol = 1, nrow = 2,  common.legend = TRUE, legend="bottom")
 
 setwd(WORKDIR)
-ggsave("plots/figure_6_2.0.pdf", device = "pdf", width = 36.52,  height = 12.63,  units = "cm")
+#ggsave("plots/figure_6_2.0.pdf", device = "pdf", width = 36.52,  height = 12.63,  units = "cm")
+ggsave("plots/figure_6_2.1.pdf", device = "pdf", width = 20,  height = 28,  units = "cm")
 ```
