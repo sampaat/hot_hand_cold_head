@@ -34,8 +34,9 @@ The columns featured in the dataset (names in the first row):
 - Clone the codebase and open *hot_hand_cold_head.Rmd* to reproduce research results presented in (**1**).
 - Create a working directory and set the path in the first chunk as WORKDIR
 - Create the subdirectories __calcdata__ and __plots__
-- Download the 5 csv files from (**4**)
+- Download the 5 csv files from (**4**), place them into __calcdata__
 - The code should work with the latest R-core and tidyverse packages (but R 4.2.2 and tidyverse 2.0.0 should work 100%)
+- If you are using RStudio rmarkdown and ggpubr are automatically installed, otherwise needed manually (rmarkdown 2.20 and ggpubr 0.6.0 should work 100%)
 - After running the Rmd you will find all plots in the respective directory.
 
 With questions about the dataset or the process, contact Máté Sándor (sampaat at gmail dot com).
