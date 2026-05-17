@@ -887,3 +887,23 @@ setwd(WORKDIR)
 #ggsave("plots/figure_6_2.0.pdf", device = "pdf", width = 36.52,  height = 12.63,  units = "cm")
 ggsave("plots/figure_6_2.1.pdf", device = "pdf", width = 20,  height = 28,  units = "cm")
 ```
+
+# Within-person changes in betting probabilities
+
+We set up the indicator variables signaling the user experiencing long winning or losing streaks and game_diff_ratio_log is the same thing we used above at _Size of pwin change_. For the regression we will use feols from fixest to be able to controll over users.
+
+```{r}
+game_changer_set <- pooled_table_unscaled %>% 
+  select(userID, pwin, pwin_pred, game_diff_ratio, streak, status, label, game_streak) %>%
+  mutate(win5 = ifelse((streak > 4)&(status == "win"), 1, 0)) %>%
+  mutate(lose5 = ifelse((streak > 4)&(status == "loss"), 1, 0)) %>%
+  mutate(game_diff_ratio_log = log(game_diff_ratio+1, base = 2))
+
+model_player_control_lag_only_changers <- fixest::feols(
+  game_diff_ratio_log ~ win5 + lose5 | userID,
+  data = game_changer_set %>% filter(streak != game_streak),
+  cluster = ~userID
+)
+
+summary(model_player_control_lag_only_changers)
+```
