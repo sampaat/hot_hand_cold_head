@@ -1,8 +1,6 @@
 # Approaching the Hot Hand with a Cool Head
 Data preparatory and analytical scripts of "Approaching the Hot Hand with a Cool Head. A Comment on Xu and Harvey (Cognition, 2014)" by Máté Csaba Sándor and Barna Bakó of Corvinus University of Budapest
 
-To run the scripts use R version >4.0.0 (2020-04-24).
-
 ## Producing the gambling dataset
 
 The gambling dataset was created using the transactional data extractable from the bitcoin ledger. To make things simpler we have been using a formated dataset from Kondor et al. [^2], available currently at Dryad [^3]. To replicate the dataset, use the script *data_preparation_bitcoin.R*. Do not run the script as it is, since first you need to download the appropriate datasets from above which takes considerable time. Also there are some variables that need manual adjustment, to avoid overwhelming most desktop computers.
