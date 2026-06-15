@@ -2,18 +2,73 @@
 title: "Approaching the Hot Hand with a Cool Head"
 output: html_notebook
 ---
-# Packages and setup
+
+# Loading packages
 
 ```{r echo=FALSE, cache=FALSE, results=FALSE, warning=FALSE, comment=FALSE, warning=FALSE}
-library(tidyverse)
+required_packages <- c("tidyverse", "rmarkdown", "ggpubr", "fixest")
 
+missing <- required_packages[!sapply(required_packages, requireNamespace, quietly = TRUE)]
+
+if (length(missing) > 0) {
+  message("Installing missing packages: ", paste(missing, collapse = ", "))
+  install.packages(missing)
+}
+
+message("✔ Package check complete.")
+
+library(tidyverse, quietly = T)
+```
+# Prechecks for file system setup
+
+If the following block provides any error messages, please action on them.
+
+```{r echo=FALSE, cache=FALSE, results=FALSE, warning=FALSE, comment=FALSE, warning=FALSE}
 WORKDIR <- "C:/Users/sampa/Documents/bce-bitluck" #set this for your own working directory
 
 if(!dir.exists(file.path(WORKDIR, "calcdata"))){print("Inpud data directory 'calcdata' missing!...")}
 
 if(!dir.exists(file.path(WORKDIR, "plots"))){print("Plot dump directory 'plots' missing!...")}
 
-if(list.files(file.path(WORKDIR, "calcdata")) %>% grepl("^satoshidice_bets_matched_",.) %>% sum() < 5 ){print("Some input files may be missing!... Check README.md")}
+is_writable_dir <- function(dir) {
+  test_file <- file.path(dir, paste0(".write_test_", Sys.getpid()))
+  
+  result <- tryCatch({
+    writeLines("test", test_file)
+    list(ok = TRUE, error = NULL)
+  }, error = function(e) {
+    list(ok = FALSE, error = e$message)
+  })
+  
+  if (file.exists(test_file)) unlink(test_file)
+  
+  result
+}
+
+res <- is_writable_dir(file.path(WORKDIR, "plots"))
+
+if (!res$ok) {
+  stop("WORKDIR/plots not writable: ", res$error)
+}
+
+#last check to see if files exist
+setwd(WORKDIR)
+
+files <- paste0(
+  "calcdata/satoshidice_bets_matched__",
+  c("2012-05-02","2012-09-17","2012-12-17","2013-05-04","2013-09-11"),
+  "_to_",
+  c("2012-05-22","2012-10-07","2013-01-06","2013-05-24","2013-10-01"),
+  "_clean.csv"
+)
+
+missing <- files[!file.exists(files)]
+
+if (length(missing) > 0) {
+  stop("Missing files:\n", paste(missing, collapse = "\n"))
+}
+
+message("✔ File paths set up.")
 ```
 
 # The Dataset
@@ -37,10 +92,7 @@ Important quantities created (for this article that is):
   * pwin_pred - pwin of the following game
   * game_changed - logical variable, TRUE if a different game (pwin/odds/mulitplier) have been bet on after the current game
 
-```{r echo=FALSE, cache=FALSE, results=FALSE, warning=FALSE, comment=FALSE, warning=FALSE}
-library(tidyverse)
-
-WORKDIR <- "C:/Users/sampa/Documents/bce-bitluck" #set this for your own working directory
+```{r echo=FALSE, cache=FALSE, results=FALSE, warning=FALSE, comment=FALSE}
 
 normalizeToBitcoin <- function(user_bets){
   user_bets %>% 
@@ -210,9 +262,11 @@ user_bets_matched_list <- tibble(
 pooled_table_unscaled <- user_bets_matched_list  %>% 
   pull(users_table, name = label) %>%
   bind_rows(.id = "label")
+
+message("✔ Precalculations complete.")
 ```
 
-# Distribution of win probability
+# Summary statistics and Observed distribution of risk choices
 
 The two tables calculated below are featured in Table 1 and 2. Straightforward summary statistics.
 
@@ -227,7 +281,8 @@ pooled_table_unscaled %>%
     med_bet = median(bet_value),
     .groups = "drop")
 
-#bitcoin prices can be added from the bitcoin_pricehistory_lowvar.R script
+#bitcoin prices used to be be added from the bitcoin_pricehistory_lowvar.R script
+#the bitcoin price data has been turned proprietary in the meantime by bitcoincharts.org from public
 
 
 pooled_table_unscaled %>%
@@ -242,9 +297,9 @@ pooled_table_unscaled %>%
   arrange(pwin)
 ```
 
-# Observed mean winning probability
+# Population-wide observed winning probabilities after winning streaks of different lengths
 
-On streak of n means the game followed n-1 games without changing the outcome at any. Off streak of n means the game has followed n-1 games of any but the same outcomes as the current one. Here we calculate the ratio of wins to losses following game histories on/off streak of n. The plot produces figure 2.
+On streak of n means the game followed n-1 games without changing the outcome at any. Off streak of n means the game has followed n-1 games of any but the same outcomes as the current one. Here we calculate the ratio of wins to losses following game histories on/off streak of n. The plot produces figure 1.
 
 ```{r}
 winstreak_obs_winprob <- lapply(seq(1,10), function(i){
@@ -337,9 +392,9 @@ setwd(WORKDIR)
 ggsave("plots/figure_2_2.2.pdf", device = "pdf", width = 29,  height = 35,  units = "cm")
 ```
 
-# Mean pwin after streak
+# Mean chosen winning probability after winning and losing streaks of length n.
 
-Similar to what we have observed before, but here we are measuring the median of the pwin, which is the implied probability of win (reciprocate of odds/multiplier) after an n long win/loss streak. The plot produces figure 3.
+Similar to what we have observed before, but here we are measuring the median of the pwin, which is the implied probability of win (reciprocate of odds/multiplier) after an n long win/loss streak. The plot produces figure 2.
 
 ```{r}
 streak_odds_pwin <- pooled_table_unscaled %>% 
@@ -385,7 +440,7 @@ setwd(WORKDIR)
 ggsave("plots/figure_3_2.1.pdf", device = "pdf", width = 18.26,  height = 12.63,  units = "cm")
 ```
 
-# Probability of changing pwin
+# Population-wide probabilities of increasing, decreasing, or holding the chosen winning probability after winning and losing streaks.
 
 Here we calculate the ratio of when the game changes (vs when it is not) following win/loss streaks of n. Produces figure 4.
 
@@ -473,9 +528,9 @@ setwd(WORKDIR)
 #ggsave("plots/figure_4_5.1.pdf", device = "pdf", width = 36.52,  height = 12.63,  units = "cm")
 ggsave("plots/figure_4_5.2.pdf", device = "pdf", width = 20,  height = 28,  units = "cm")
 ```
-# Size of pwin change
+# Means of relative logarithmic changes in chosen winning probabilities by streak length and observation period.
 
-Here we calculate the relative size of change in pwin. Here -1 means halving pwin compared to the current game (e.g. from 50% to 25%) and +1 means doubling it (e.g. from 1% to 2%). Logarithmic scale is used to normalise the distribution of the ratios, a well known technique from finance. This section produces figure 5.
+Here we calculate the relative size of change in pwin. Here -1 means halving pwin compared to the current game (e.g. from 50% to 25%) and +1 means doubling it (e.g. from 1% to 2%). Logarithmic scale is used to normalize the distribution of the ratios, a well known technique from finance. This section produces figure 4.
 
 ```{r}
 pwin_change_relative <- pooled_table_unscaled %>% 
@@ -550,10 +605,231 @@ pwin_change_relative_boot %>%
 setwd(WORKDIR)
 ggsave("plots/figure_5_3.2.pdf", device = "pdf", width = 18.26,  height = 12.63,  units = "cm")
 ```
+# Mean winning probability by longest winning or losing streak, using the player-level averaging approach in Xu and Harvey (2015) VS averaging over all bets placed by players with a given maximum streak length.
 
-# Simulations
+Here we have tried to replicate the analysis Xu and Harvey presented as a reaction to the critique of Demaree. They calculate average of user risk propensity, depending on the longest win/loss streaks reached by those users. They first create risk propensities for players, averaging the players' chosen risk probabilites in their games and then averaging over the users, thus weighing the propensity of all users equally. We on the other hand only did the averaging over the games, after assigning them to the maximum streak lengths, thus weighing user propensities by the number of bets placed. The script produces figure 5.
 
-Here we are basically generating random sequences of outcomes for players who choose a random game from their initial set and stuck to it for n_games. Then we calculate the same observed winning probabilites Xu and Harwey worked with and plot it like we did for the data in the beginning. It produces figure 1.
+```{r}
+#no averaging on user level before aggregation
+#this represents the right thing to do
+dset_xuanswer_longest_streak_length_signed_nonaggreg <- pooled_table_unscaled %>% 
+  select(userID, odds, pwin, streak, streak_total_length, status) %>%
+  mutate(streak_total_length_signed = ifelse(status == "win", streak_total_length, -streak_total_length)) %>%
+  group_by(userID) %>%
+  mutate(streak_max_win = pmax(max(streak_total_length_signed),0),
+         streak_max_loss = abs(pmin(min(streak_total_length_signed),0))) %>%
+  ungroup() %>%
+  {bind_rows(group_by(., streak_max_win) %>%
+               summarise(mean_pwin = mean(pwin),
+                         mean_multip = mean(odds),
+                         n_of = n(),
+                         .groups = "drop") %>%
+               mutate(status = "win") %>%
+               rename(streak_max = streak_max_win),
+             group_by(.,streak_max_loss) %>%
+               summarise(mean_pwin = mean(pwin),
+                         mean_multip = mean(odds),
+                         n_of = n(),
+                         .groups = "drop") %>%
+               mutate(status = "loss") %>%
+               rename(streak_max = streak_max_loss))}
+ggplot(dset_xuanswer_longest_streak_length_signed_nonaggreg, aes(x=streak_max, y=mean_pwin, group=status)) +
+  geom_line(aes(color=status))+
+  ggtitle("Mean pwin with vs longest win/loss streak experienced (no averaging for users / our approach)") +
+  xlab("Streak length") + 
+  ylab("Mean pwin") + 
+  labs(group = "Win/loss streak") +
+  xlim(0,6)
+#creating user averages before aggregation
+#this represents the way Xu probably did it
+dset_xuanswer_longest_streak_length_signed_useraggr <- pooled_table_unscaled %>% 
+  select(userID, odds, pwin, streak, streak_total_length, status) %>%
+  mutate(streak_total_length_signed = ifelse(status == "win", streak_total_length, -streak_total_length)) %>%
+  group_by(userID) %>%
+  summarise(streak_max_win = pmax(max(streak_total_length_signed),0),
+         streak_max_loss = abs(pmin(min(streak_total_length_signed),0)),
+         user_mean_pwin = mean(pwin),
+         user_mean_multip = mean(odds),
+         n_games = n(),
+         .groups = "drop") %>%
+  {bind_rows(group_by(., streak_max_win) %>%
+               summarise(mean_pwin = mean(user_mean_pwin),
+                         mean_multip = mean(user_mean_multip),
+                         n_of = n(),
+                         .groups = "drop") %>%
+               mutate(status = "win") %>%
+               rename(streak_max = streak_max_win),
+             group_by(.,streak_max_loss) %>%
+               summarise(mean_pwin = mean(user_mean_pwin),
+                         mean_multip = mean(user_mean_multip),
+                         n_of = n(),
+                         .groups = "drop") %>%
+               mutate(status = "loss") %>%
+               rename(streak_max = streak_max_loss))}
+xuanswer_us <- ggplot(dset_xuanswer_longest_streak_length_signed_nonaggreg %>%
+                      mutate(status = ifelse(status == "win","Win","Loss")), 
+                      aes(x=streak_max, y=mean_pwin/100, group=status)) +
+  geom_line(aes(color = status, linetype = status), size = 1)+
+  geom_point(aes(color = status, shape = status), size = 1.5) +
+    theme_light() +
+    theme(
+      axis.title.x = element_text(colour="black", size = 13),
+      axis.title.y = element_text(colour="black", size = 13),
+      axis.text.y = element_text(size = 12),
+      axis.text.x = element_text(size = 12),
+      legend.position =  "bottom",
+      legend.direction = "horizontal",
+      legend.text = element_text(colour="black", size = 12),
+      legend.title = element_text(colour="black", size = 14),
+      line = element_line(size = 2.5, lineend = "butt"),
+      legend.key.size = grid::unit(2, "lines"),
+      legend.key.width = unit(2,"cm")
+    )  +
+    scale_color_manual(values = c("#E7033C","#13C062","#096773","#F9CC2C","#111460")) +
+    scale_linetype_manual(values = c(1,3,2,4,5)) +
+    scale_shape_manual(values=c(25, 24))+
+    scale_y_continuous(labels=scales::percent_format()) +
+    labs(
+      x = "Longest streak achieved by player",
+      y = "Mean winning probability (games)",
+      color = "Streak type",
+      linetype = "Streak type",
+      shape = "Streak type") + 
+  xlim(0,6)
+xuanswer_them <- ggplot(dset_xuanswer_longest_streak_length_signed_useraggr%>%
+                      mutate(status = ifelse(status == "win","Win","Loss")),
+                      aes(x=streak_max, y=mean_pwin/100, group=status)) +
+  geom_line(aes(color = status, linetype = status), size = 1)+
+  geom_point(aes(color = status, shape = status), size = 1.5) +
+    theme_light() +
+    theme(
+      axis.title.x = element_text(colour="black", size = 13),
+      axis.title.y = element_text(colour="black", size = 13),
+      axis.text.y = element_text(size = 12),
+      axis.text.x = element_text(size = 12),
+      legend.position =  "bottom",
+      legend.direction = "horizontal",
+      legend.text = element_text(colour="black", size = 12),
+      legend.title = element_text(colour="black", size = 14),
+      line = element_line(size = 2.5, lineend = "butt"),
+      legend.key.size = grid::unit(2, "lines"),
+      legend.key.width = unit(2,"cm")
+    )  +
+    scale_color_manual(values = c("#E7033C","#13C062","#096773","#F9CC2C","#111460")) +
+    scale_linetype_manual(values = c(1,3,2,4,5)) +
+    scale_shape_manual(values=c(25, 24))+
+    scale_y_continuous(labels=scales::percent_format()) +
+    labs(
+      x = "Longest streak achieved by player",
+      y = "Mean winning probability (players)",
+      color = "Streak type:",
+      linetype = "Streak type:",
+      shape = "Streak type:") + 
+  xlim(0,6)
+ggpubr::ggarrange(xuanswer_them, xuanswer_us,
+          ncol = 1, nrow = 2,  common.legend = TRUE, legend="bottom")
+
+setwd(WORKDIR)
+#ggsave("plots/figure_6_2.0.pdf", device = "pdf", width = 36.52,  height = 12.63,  units = "cm")
+ggsave("plots/figure_6_2.1.pdf", device = "pdf", width = 20,  height = 28,  units = "cm")
+```
+
+# Fixed-effects regressions of within-person changes in chosen winning probabilities
+
+We set up the indicator variables signaling the user experiencing long winning or losing streaks and game_diff_ratio_log is the same thing we used above at _Size of pwin change_. For the regression we will use feols from fixest to be able to controll over users.
+
+```{r}
+game_changer_set <- pooled_table_unscaled %>% 
+  select(userID, pwin, pwin_pred, game_diff_ratio, streak, status, label, game_streak) %>%
+  mutate(win3 = ifelse((streak > 2)&(status == "win"), 1, 0)) %>%
+  mutate(lose3 = ifelse((streak > 2)&(status == "loss"), 1, 0)) %>%
+  mutate(win4 = ifelse((streak > 3)&(status == "win"), 1, 0)) %>%
+  mutate(lose4 = ifelse((streak > 3)&(status == "loss"), 1, 0)) %>%
+  mutate(win5 = ifelse((streak > 4)&(status == "win"), 1, 0)) %>%
+  mutate(lose5 = ifelse((streak > 4)&(status == "loss"), 1, 0)) %>%
+  mutate(win6 = ifelse((streak > 5)&(status == "win"), 1, 0)) %>%
+  mutate(lose6 = ifelse((streak > 5)&(status == "loss"), 1, 0)) %>%
+  mutate(win7 = ifelse((streak > 6)&(status == "win"), 1, 0)) %>%
+  mutate(lose7 = ifelse((streak > 6)&(status == "loss"), 1, 0)) %>%
+  mutate(game_diff_ratio_log = log(game_diff_ratio+1, base = 2))
+```
+
+Models over different cutoff lengths of "long streak"
+
+```{r}
+model_player_control_lag_only_changers_3 <- fixest::feols(
+  game_diff_ratio_log ~ win3 + lose3 | userID,
+  data = game_changer_set %>% filter(streak != game_streak),
+  cluster = ~userID
+)
+
+summary(model_player_control_lag_only_changers_3)
+```
+
+```{r}
+model_player_control_lag_only_changers_4 <- fixest::feols(
+  game_diff_ratio_log ~ win4 + lose4 | userID,
+  data = game_changer_set %>% filter(streak != game_streak),
+  cluster = ~userID
+)
+
+summary(model_player_control_lag_only_changers_4)
+```
+
+The results below are the ones summarized in Table 3.
+
+```{r}
+model_player_control_lag_only_changers_5 <- fixest::feols(
+  game_diff_ratio_log ~ win5 + lose5 | userID,
+  data = game_changer_set %>% filter(streak != game_streak),
+  cluster = ~userID
+)
+
+summary(model_player_control_lag_only_changers_5)
+```
+
+```{r}
+model_player_control_lag_only_changers_6 <- fixest::feols(
+  game_diff_ratio_log ~ win6 + lose6 | userID,
+  data = game_changer_set %>% filter(streak != game_streak),
+  cluster = ~userID
+)
+
+summary(model_player_control_lag_only_changers_6)
+```
+
+```{r}
+model_player_control_lag_only_changers_7 <- fixest::feols(
+  game_diff_ratio_log ~ win7 + lose7 | userID,
+  data = game_changer_set %>% filter(streak != game_streak),
+  cluster = ~userID
+)
+
+summary(model_player_control_lag_only_changers_7)
+```
+Summarizing coefficient values for different lenghts: Coefficient estimates in Table A1.
+
+```{r}
+c(model_player_control_lag_only_changers_3$coefficients,
+  model_player_control_lag_only_changers_4$coefficients,
+  model_player_control_lag_only_changers_5$coefficients,
+  model_player_control_lag_only_changers_6$coefficients,
+  model_player_control_lag_only_changers_7$coefficients) %>%
+  matrix(nrow = 2, dimnames = list(c("win","loss"),c("3","4","5","6","7")))
+```
+Summarizing coefficient standard errors for different lenghts: Coefficient estimate standard errors in Table A1.
+```{r}
+c(model_player_control_lag_only_changers_3$se,
+  model_player_control_lag_only_changers_4$se,
+  model_player_control_lag_only_changers_5$se,
+  model_player_control_lag_only_changers_6$se,
+  model_player_control_lag_only_changers_7$se) %>%
+  matrix(nrow = 2, dimnames = list(c("win","loss"),c("3","4","5","6","7")))
+```
+
+# Empirical winning frequencies of players with and without streaks of different lengths
+
+Here we are basically generating random sequences of outcomes for players who choose a random game from their initial set and stuck to it for n_games. Then we calculate the same observed winning probabilites Xu and Harwey worked with and plot it like we did for the data in the beginning. It produces figure A1.
 
 ```{r}
 n_players <- 10000
@@ -757,153 +1033,4 @@ ggpubr::ggarrange(simu_win, simu_loss,
 
 setwd(WORKDIR)
 ggsave("plots/figure_1_2.1.pdf", device = "pdf", width = 36.52,  height = 12.63,  units = "cm")
-```
-
-# After win streaks XU ANSWER REPLICATION
-
-Here we have tried to replicate the analysis Xu and Harvey presented as a reaction to the critique of Demaree. They calculate average of user risk propensity, depending on the longest win/loss streaks reached by those users. They first create risk propensities for players, averaging the players' chosen risk probabilites in their games and then averaging over the users, thus weighing the propensity of all users equally. We on the other hand only did the averaging over the games, after assigning them to the maximum streak lengths, thus weighing user propensities by the number of bets placed. The script produces figure 6.
-
-```{r}
-#no averaging on user level before aggregation
-#this represents the right thing to do
-dset_xuanswer_longest_streak_length_signed_nonaggreg <- pooled_table_unscaled %>% 
-  select(userID, odds, pwin, streak, streak_total_length, status) %>%
-  mutate(streak_total_length_signed = ifelse(status == "win", streak_total_length, -streak_total_length)) %>%
-  group_by(userID) %>%
-  mutate(streak_max_win = pmax(max(streak_total_length_signed),0),
-         streak_max_loss = abs(pmin(min(streak_total_length_signed),0))) %>%
-  ungroup() %>%
-  {bind_rows(group_by(., streak_max_win) %>%
-               summarise(mean_pwin = mean(pwin),
-                         mean_multip = mean(odds),
-                         n_of = n(),
-                         .groups = "drop") %>%
-               mutate(status = "win") %>%
-               rename(streak_max = streak_max_win),
-             group_by(.,streak_max_loss) %>%
-               summarise(mean_pwin = mean(pwin),
-                         mean_multip = mean(odds),
-                         n_of = n(),
-                         .groups = "drop") %>%
-               mutate(status = "loss") %>%
-               rename(streak_max = streak_max_loss))}
-ggplot(dset_xuanswer_longest_streak_length_signed_nonaggreg, aes(x=streak_max, y=mean_pwin, group=status)) +
-  geom_line(aes(color=status))+
-  ggtitle("Mean pwin with vs longest win/loss streak experienced (no averaging for users / our approach)") +
-  xlab("Streak length") + 
-  ylab("Mean pwin") + 
-  labs(group = "Win/loss streak") +
-  xlim(0,6)
-#creating user averages before aggregation
-#this represents the way Xu probably did it
-dset_xuanswer_longest_streak_length_signed_useraggr <- pooled_table_unscaled %>% 
-  select(userID, odds, pwin, streak, streak_total_length, status) %>%
-  mutate(streak_total_length_signed = ifelse(status == "win", streak_total_length, -streak_total_length)) %>%
-  group_by(userID) %>%
-  summarise(streak_max_win = pmax(max(streak_total_length_signed),0),
-         streak_max_loss = abs(pmin(min(streak_total_length_signed),0)),
-         user_mean_pwin = mean(pwin),
-         user_mean_multip = mean(odds),
-         n_games = n(),
-         .groups = "drop") %>%
-  {bind_rows(group_by(., streak_max_win) %>%
-               summarise(mean_pwin = mean(user_mean_pwin),
-                         mean_multip = mean(user_mean_multip),
-                         n_of = n(),
-                         .groups = "drop") %>%
-               mutate(status = "win") %>%
-               rename(streak_max = streak_max_win),
-             group_by(.,streak_max_loss) %>%
-               summarise(mean_pwin = mean(user_mean_pwin),
-                         mean_multip = mean(user_mean_multip),
-                         n_of = n(),
-                         .groups = "drop") %>%
-               mutate(status = "loss") %>%
-               rename(streak_max = streak_max_loss))}
-xuanswer_us <- ggplot(dset_xuanswer_longest_streak_length_signed_nonaggreg %>%
-                      mutate(status = ifelse(status == "win","Win","Loss")), 
-                      aes(x=streak_max, y=mean_pwin/100, group=status)) +
-  geom_line(aes(color = status, linetype = status), size = 1)+
-  geom_point(aes(color = status, shape = status), size = 1.5) +
-    theme_light() +
-    theme(
-      axis.title.x = element_text(colour="black", size = 13),
-      axis.title.y = element_text(colour="black", size = 13),
-      axis.text.y = element_text(size = 12),
-      axis.text.x = element_text(size = 12),
-      legend.position =  "bottom",
-      legend.direction = "horizontal",
-      legend.text = element_text(colour="black", size = 12),
-      legend.title = element_text(colour="black", size = 14),
-      line = element_line(size = 2.5, lineend = "butt"),
-      legend.key.size = grid::unit(2, "lines"),
-      legend.key.width = unit(2,"cm")
-    )  +
-    scale_color_manual(values = c("#E7033C","#13C062","#096773","#F9CC2C","#111460")) +
-    scale_linetype_manual(values = c(1,3,2,4,5)) +
-    scale_shape_manual(values=c(25, 24))+
-    scale_y_continuous(labels=scales::percent_format()) +
-    labs(
-      x = "Longest streak achieved by player",
-      y = "Mean winning probability (games)",
-      color = "Streak type",
-      linetype = "Streak type",
-      shape = "Streak type") + 
-  xlim(0,6)
-xuanswer_them <- ggplot(dset_xuanswer_longest_streak_length_signed_useraggr%>%
-                      mutate(status = ifelse(status == "win","Win","Loss")),
-                      aes(x=streak_max, y=mean_pwin/100, group=status)) +
-  geom_line(aes(color = status, linetype = status), size = 1)+
-  geom_point(aes(color = status, shape = status), size = 1.5) +
-    theme_light() +
-    theme(
-      axis.title.x = element_text(colour="black", size = 13),
-      axis.title.y = element_text(colour="black", size = 13),
-      axis.text.y = element_text(size = 12),
-      axis.text.x = element_text(size = 12),
-      legend.position =  "bottom",
-      legend.direction = "horizontal",
-      legend.text = element_text(colour="black", size = 12),
-      legend.title = element_text(colour="black", size = 14),
-      line = element_line(size = 2.5, lineend = "butt"),
-      legend.key.size = grid::unit(2, "lines"),
-      legend.key.width = unit(2,"cm")
-    )  +
-    scale_color_manual(values = c("#E7033C","#13C062","#096773","#F9CC2C","#111460")) +
-    scale_linetype_manual(values = c(1,3,2,4,5)) +
-    scale_shape_manual(values=c(25, 24))+
-    scale_y_continuous(labels=scales::percent_format()) +
-    labs(
-      x = "Longest streak achieved by player",
-      y = "Mean winning probability (players)",
-      color = "Streak type:",
-      linetype = "Streak type:",
-      shape = "Streak type:") + 
-  xlim(0,6)
-ggpubr::ggarrange(xuanswer_them, xuanswer_us,
-          ncol = 1, nrow = 2,  common.legend = TRUE, legend="bottom")
-
-setwd(WORKDIR)
-#ggsave("plots/figure_6_2.0.pdf", device = "pdf", width = 36.52,  height = 12.63,  units = "cm")
-ggsave("plots/figure_6_2.1.pdf", device = "pdf", width = 20,  height = 28,  units = "cm")
-```
-
-# Within-person changes in betting probabilities
-
-We set up the indicator variables signaling the user experiencing long winning or losing streaks and game_diff_ratio_log is the same thing we used above at _Size of pwin change_. For the regression we will use feols from fixest to be able to controll over users.
-
-```{r}
-game_changer_set <- pooled_table_unscaled %>% 
-  select(userID, pwin, pwin_pred, game_diff_ratio, streak, status, label, game_streak) %>%
-  mutate(win5 = ifelse((streak > 4)&(status == "win"), 1, 0)) %>%
-  mutate(lose5 = ifelse((streak > 4)&(status == "loss"), 1, 0)) %>%
-  mutate(game_diff_ratio_log = log(game_diff_ratio+1, base = 2))
-
-model_player_control_lag_only_changers <- fixest::feols(
-  game_diff_ratio_log ~ win5 + lose5 | userID,
-  data = game_changer_set %>% filter(streak != game_streak),
-  cluster = ~userID
-)
-
-summary(model_player_control_lag_only_changers)
 ```
