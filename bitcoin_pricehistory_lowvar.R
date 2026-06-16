@@ -1,21 +1,29 @@
-# require(groundhog)
-# groundhog.day="2021-03-01"
-# pkgs=c('tidyverse','slider')
-# groundhog.library(pkgs, groundhog.day)
+required_packages <- c("tidyverse", "slider", "readr")
+
+missing <- required_packages[!sapply(required_packages, requireNamespace, quietly = TRUE)]
+
+if (length(missing) > 0) {
+  message("Installing missing packages: ", paste(missing, collapse = ", "))
+  install.packages(missing)
+}
+
+message("✔ Package check complete.")
+
 library(tidyverse)
-library(slider)
+require(slider)
+require(readr)
 
 #download bitstamp market price history
 
-exch_link <- "http://api.bitcoincharts.com/v1/csv/bitstampUSD.csv.gz"
+exchrate <- readr::read_csv(url, show_col_types = FALSE) %>%
+  mutate(datetime = as.POSIXct(timestamp, origin = "1970-01-01", tz = "UTC")) %>%
+  subset(datetime >= as.POSIXct("2012-05-02", tz = "UTC") & datetime <  as.POSIXct("2013-10-02", tz = "UTC")) %>%
+  rename(price = close)
 
-exchrate <- readr::read_csv(exch_link, col_names = c("tstamp", "price", "volume")) %>%
-  dplyr::mutate(date = as.POSIXct(tstamp, origin="1970-01-01")) %>%
-  mutate(daydate = as.Date(date))
 
 #create table with daily weighted mean prices
 dailyprices <- exchrate %>%
-  mutate(daydate = as.Date(date)) %>%
+  mutate(daydate = as.Date(datetime)) %>%
   group_by(daydate) %>%
   summarize(dayprice = sum(price*volume)/sum(volume)) %>%
   ungroup() %>%
@@ -75,6 +83,9 @@ ranges_selected %>%
   left_join(relSD_moving_21d %>%
               filter(end < as.Date("2014-04-21")) %>%
               mutate(totMeanRelSD = mean(relSD)),
-            by = c("start","end")
-  )
+            by = c("start","end")) %>%
+    mutate(relSD_perc = 100*relSD) %>%
+  select(start_date = start, mean_daily_price = mean_price, relative_daily_price_deviation_percent = relSD_perc)
+
+
   

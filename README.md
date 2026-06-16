@@ -45,6 +45,20 @@ The columns featured in the datasets (names in the first row):
 
 With questions about the dataset or the process, contact Máté Sándor (sampaat at gmail dot com).
 
+## Replicating exchange rate details of Table 1. (last 2 columns)
+
+Since this part of the article depends on hisotrical bitcoin price, the replication depends on the availability of semi-public data providers. This instance of the article depends on the project bitstamp-btcusd-minute-data [^6].
+
+#### Setup of R:
+- Use the latest R-core and the __tidyverse__ package (but R 4.2.2 and tidyverse 2.0.0 should work 100%)
+- Install __slider__ and __readr__ packages (slider 0.3.3 and readr 2.2.0 should work 100%) 
+
+#### Executing the R script and obtaining results:
+- Run *bitcoin_pricehistory_lowvar.R*
+- If you are missing packages or did not set up the files or directories right, you get specific error messages.
+- After running the Rmd you will find the respective columns of Table 1 as the final output on the terminal.
+
+
 ## References
 
   [^1]: Sándor, M.C., Bakó, B (2021). Approaching the Hot Hand with a Cool Head (Working paper) https://papers.ssrn.com/sol3/papers.cfm?abstract_id=3952051
@@ -52,5 +66,6 @@ With questions about the dataset or the process, contact Máté Sándor (sampaat
   [^3]: https://doi.org/10.5061/dryad.qz612jmcf
   [^4]: [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.5600259.svg)](https://doi.org/10.5281/zenodo.5600259)
   [^5]: https://web.archive.org/web/20130403062213/http://www.satoshidice.com/
+  [^6]: https://ff137.github.io/bitstamp-btcusd-minute-data/?utm_source=chatgpt.com
   
 
